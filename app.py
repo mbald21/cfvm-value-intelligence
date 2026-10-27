@@ -10,7 +10,7 @@ DATA=Path(__file__).parent/"data"
 DATA.mkdir(exist_ok=True)
 st.title("🏈 Better Betting with Baldwin")
 st.subheader("College Football Value Intelligence")
-st.info("CFVM v1.3 • Moneyline format checks and market coverage")
+st.info("CFVM v1.4 • Secure TheOddsAPI integration")
 st.caption("Private research prototype • independently modeled probabilities • not verified betting advice")
 st.warning("Research prototype: forecasts refresh when the app is visited after 24 hours; no background scheduler or durable cloud database. Historical profitability is unverified.")
 report_path=DATA/"model_report.json"
@@ -65,6 +65,28 @@ with st.sidebar:
 pred_path=DATA/"predictions.csv"
 pred=pd.read_csv(pred_path,dtype={"game_id":str}) if pred_path.exists() else pd.DataFrame()
 quotes_path=DATA/"quotes.csv"
+from theodds_feed import fetch_odds
+try:
+    provider_key=st.secrets.get("THEODDSAPI_KEY","")
+except Exception:
+    provider_key=""
+if provider_key and not pred.empty:
+    @st.cache_data(ttl=600,show_spinner=False)
+    def fetch_paid_quotes(games_key):
+        return fetch_odds(pred,provider_key)
+    provider_q,provider_status=fetch_paid_quotes(tuple(pred.game_id.astype(str)))
+else:
+    provider_q=pd.DataFrame()
+    provider_status={"status":"not_configured"}
+with st.expander("Dedicated moneyline provider — TheOddsAPI",expanded=True):
+    if provider_status["status"]=="not_configured":
+        st.info("Add THEODDSAPI_KEY to Streamlit Secrets to connect. NCAAF requires an eligible provider plan.")
+    elif provider_status["status"]=="access_restricted":
+        st.warning("The provider key is connected, but your current plan does not grant NCAAF access.")
+    elif provider_status["status"]=="ok":
+        st.success(f"Retrieved {provider_status['moneyline_quotes']} sportsbook quotes across {provider_status['matched_games']} games.")
+    else:
+        st.info(f"Provider status: {provider_status['status']}. {provider_status.get('detail','')}")
 board=pd.DataFrame()
 public_q=pd.DataFrame()
 if not pred.empty:
@@ -108,9 +130,10 @@ if not pred.empty:
         st.success(f"Matched moneylines for {odds_diag['matched_games']} games.")
     else:
         st.warning("No matched public moneylines yet. Check the event and odds counts above. Predictions remain available.")
-if not pred.empty and (quotes_path.exists() or not public_q.empty):
+if not pred.empty and (quotes_path.exists() or not public_q.empty or not provider_q.empty):
     q=pd.read_csv(quotes_path,dtype={"game_id":str}) if quotes_path.exists() else pd.DataFrame()
     if not public_q.empty:q=pd.concat([q,public_q],ignore_index=True)
+    if not provider_q.empty:q=pd.concat([q,provider_q],ignore_index=True)
     if {"game_id","book","home_american","away_american","quote_utc"}.issubset(q.columns):
         q["quote_utc"]=pd.to_datetime(q["quote_utc"],utc=True,errors="coerce")
         q=q[q["quote_utc"].notna()].copy()
