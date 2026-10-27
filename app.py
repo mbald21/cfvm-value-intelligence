@@ -50,7 +50,7 @@ with st.sidebar:
     if report_path.exists():
         st.json(json.loads(report_path.read_text()))
     st.divider()
-    st.caption("Optional manual odds upload. Public ESPN odds are also checked automatically, but availability is not guaranteed.")
+    st.caption("Optional manual moneyline upload. TheOddsAPI is the automatic sportsbook source.")
     st.download_button("Download odds CSV template",data="game_id,book,home_american,away_american,quote_utc\n",file_name="cfvm_moneyline_template.csv",mime="text/csv")
     upload=st.file_uploader("Moneyline quotes CSV",type="csv")
     if upload:
@@ -305,21 +305,20 @@ else:
 st.caption("Baseline models use Elo and venue. An experimental EPA/success-rate challenger is available after uploading historical per-game data. Opponent-adjusted efficiency, injuries and rosters are not yet integrated.")
 st.markdown("## Data sources & technical details")
 with st.expander("Sportsbook connection and API diagnostics",expanded=False):
-    with st.expander("Live sportsbook connection · TheOddsAPI",expanded=False):
-        if st.button("Retry TheOddsAPI now",key="retry_paid_odds"):
-            st.cache_data.clear()
-            st.rerun()
-        if provider_status["status"]=="not_configured":
-            st.info("Add THEODDSAPI_KEY to Streamlit Secrets to connect. NCAAF requires an eligible provider plan.")
-        elif provider_status["status"] in ("access_restricted","access_denied","authentication_failed","endpoint_not_found"):
-            st.error(f"TheOddsAPI request failed: {provider_status.get('status')} (HTTP {provider_status.get('http_status','unknown')}). {provider_status.get('detail','')}")
-        elif provider_status["status"]=="ok":
-            st.success(f"Retrieved {provider_status['moneyline_quotes']} sportsbook quotes across {provider_status['matched_games']} games.")
-        else:
-            st.info(f"Provider status: {provider_status['status']}. {provider_status.get('detail','')}")
-        st.caption(f"Provider HTTP status: {provider_status.get('http_status','not requested')} • Events: {provider_status.get('events',0)} • Matched events: {provider_status.get('matched_events',0)} • Moneyline markets: {provider_status.get('moneyline_markets_seen',0)} • Quoted games: {provider_status.get('matched_games',0)}")
-        with st.expander("Provider data diagnostics",expanded=False):
-            st.json({k:v for k,v in provider_status.items() if k not in ("api_key","key")})
+    if st.button("Retry TheOddsAPI now",key="retry_paid_odds"):
+        st.cache_data.clear()
+        st.rerun()
+    if provider_status["status"]=="not_configured":
+        st.info("Add THEODDSAPI_KEY to Streamlit Secrets to connect. NCAAF requires an eligible provider plan.")
+    elif provider_status["status"] in ("access_restricted","access_denied","authentication_failed","endpoint_not_found"):
+        st.error(f"TheOddsAPI request failed: {provider_status.get('status')} (HTTP {provider_status.get('http_status','unknown')}). {provider_status.get('detail','')}")
+    elif provider_status["status"]=="ok":
+        st.success(f"Retrieved {provider_status['moneyline_quotes']} sportsbook quotes across {provider_status['matched_games']} games.")
+    else:
+        st.info(f"Provider status: {provider_status['status']}. {provider_status.get('detail','')}")
+    st.caption(f"Provider HTTP status: {provider_status.get('http_status','not requested')} • Events: {provider_status.get('events',0)} • Matched events: {provider_status.get('matched_events',0)} • Moneyline markets: {provider_status.get('moneyline_markets_seen',0)} • Quoted games: {provider_status.get('matched_games',0)}")
+    with st.expander("Provider data diagnostics",expanded=False):
+        st.json({k:v for k,v in provider_status.items() if k not in ("api_key","key")})
 with st.expander("Calculation and quote diagnostics",expanded=False):
     for note in technical_notes:
         st.caption(note)
