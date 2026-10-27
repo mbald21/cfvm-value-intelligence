@@ -10,7 +10,7 @@ DATA=Path(__file__).parent/"data"
 DATA.mkdir(exist_ok=True)
 st.title("🏈 Better Betting with Baldwin")
 st.subheader("College Football Value Intelligence")
-st.info("CFVM v1.9 • Timestamp parsing repair")
+st.info("CFVM v2.0 • Odds format diagnostics")
 st.caption("Private research prototype • independently modeled probabilities • not verified betting advice")
 st.warning("Research prototype: forecasts refresh when the app is visited after 24 hours; no background scheduler or durable cloud database. Historical profitability is unverified.")
 report_path=DATA/"model_report.json"
@@ -152,17 +152,28 @@ if not pred.empty and (quotes_path.exists() or not public_q.empty or not provide
         joined=pred.merge(q,on="game_id",how="inner")
         st.caption(f"Quote rows with valid timestamps: {len(q)} • Forecast-quote comparisons: {len(joined)}")
         rows=[]
+        skipped_prices=0
+        with st.expander("Raw moneyline price diagnostics"):
+            st.dataframe(joined[["home_team","away_team","book","home_american","away_american"]].head(12),hide_index=True,use_container_width=True)
         for _,g in joined.iterrows():
             for side in ("home","away"):
                 try:
                     odds=float(g[f"{side}_american"])
-                    if -100<odds<100:continue
-                    decimal=1+odds/100 if odds>0 else 1+100/abs(odds)
+                    if 1.0<odds<50.0:
+                        decimal=odds
+                        american=round((odds-1)*100 if odds>=2 else -100/(odds-1))
+                    elif odds>=100 or odds<=-100:
+                        decimal=1+odds/100 if odds>0 else 1+100/abs(odds)
+                        american=odds
+                    else:
+                        skipped_prices+=1
+                        continue
                     prob=float(g.home_win_probability) if side=="home" else 1-float(g.home_win_probability)
                     ev=prob*decimal-1
-                    rows.append({"Game":f"{g.away_team} @ {g.home_team}","Pick":g.home_team if side=="home" else g.away_team,"Book":g["book"],"American odds":odds,"Model probability":round(prob,4),"Estimated ROI":round(ev,4),"Quote time (UTC)":g["quote_utc"]})
+                    rows.append({"Game":f"{g.away_team} @ {g.home_team}","Pick":g.home_team if side=="home" else g.away_team,"Book":g["book"],"American odds":american,"Model probability":round(prob,4),"Estimated ROI":round(ev,4),"Quote time (UTC)":g["quote_utc"]})
                 except (ValueError,TypeError):continue
         board=pd.DataFrame(rows)
+        st.caption(f"Calculated betting sides: {len(board)} • Skipped invalid prices: {skipped_prices}")
         if joined.empty:
             st.error("No quote rows joined to forecasts. Check game IDs and timestamps.")
         elif board.empty:
