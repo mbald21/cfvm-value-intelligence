@@ -21,15 +21,24 @@ def fetch_public_odds(predictions):
     diagnostics={"provider":"ESPN public scoreboard (unofficial)","status":"no_data","events":0,"priced_events":0,"matched_games":0,"retrieved_utc":datetime.now(timezone.utc).isoformat()}
     if predictions.empty:return pd.DataFrame(),diagnostics
     start=datetime.now(timezone.utc).date()
-    end=start+timedelta(days=14)
-    try:
-        response=requests.get(URL,params={"dates":f"{start:%Y%m%d}-{end:%Y%m%d}","limit":300},timeout=18,headers={"User-Agent":"CFVM-Research/0.7"})
-        response.raise_for_status()
-        events=response.json().get("events",[])
-    except Exception as exc:
+    events=[]
+    errors=[]
+    for offset in range(0,15):
+        day=start+timedelta(days=offset)
+        try:
+            response=requests.get(URL,params={"dates":f"{day:%Y%m%d}","limit":300},timeout=12,headers={"User-Agent":"CFVM-Research/0.9"})
+            response.raise_for_status()
+            events.extend(response.json().get("events",[]))
+        except Exception as exc:
+            errors.append(f"{day}: {str(exc)[:100]}")
+    diagnostics["date_requests"]=15
+    diagnostics["failed_date_requests"]=len(errors)
+    if not events and errors:
         diagnostics["status"]="source_error"
-        diagnostics["detail"]=str(exc)[:220]
+        diagnostics["detail"]="; ".join(errors[:3])
         return pd.DataFrame(),diagnostics
+    diagnostics["partial_errors"]=errors[:3]
+    events=list({str(e.get("id",i)):e for i,e in enumerate(events)}.values())
     diagnostics["events"]=len(events)
     diagnostics["events_with_odds"]=0
     diagnostics["events_with_both_moneylines"]=0
