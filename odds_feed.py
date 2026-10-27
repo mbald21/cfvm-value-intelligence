@@ -44,6 +44,11 @@ def fetch_public_odds(predictions):
     diagnostics["events_with_both_moneylines"]=0
     diagnostics["matched_by_id"]=0
     diagnostics["matched_by_team_names"]=0
+    diagnostics["odds_offers"]=0
+    diagnostics["offers_with_two_moneylines"]=0
+    diagnostics["offers_missing_moneylines"]=0
+    diagnostics["sample_odds_fields"]=[]
+    diagnostics["unmatched_example"]=[]
     rows=[]
     for event in events:
         competition=(event.get("competitions") or [{}])[0]
@@ -66,14 +71,22 @@ def fetch_public_odds(predictions):
         else:
             candidates=predictions[predictions.home_team.map(norm).isin(home_names)&predictions.away_team.map(norm).isin(away_names)]
             if len(candidates)==1:diagnostics["matched_by_team_names"]+=1
-        if len(candidates)!=1:continue
-        gid=str(candidates.iloc[0]["game_id"])
+        if len(candidates)!=1 and len(diagnostics["unmatched_example"])<3:
+            diagnostics["unmatched_example"].append({"event_id":event_id,"home":(home.get("team") or {}).get("displayName"),"away":(away.get("team") or {}).get("displayName")})
+        gid=str(candidates.iloc[0]["game_id"]) if len(candidates)==1 else None
         for offer in offers:
+            diagnostics["odds_offers"]+=1
+            if len(diagnostics["sample_odds_fields"])<2:
+                diagnostics["sample_odds_fields"].append({"offer_fields":list(offer.keys()),"home_odds_fields":list((offer.get("homeTeamOdds") or {}).keys()),"away_odds_fields":list((offer.get("awayTeamOdds") or {}).keys())})
             h=offer.get("homeTeamOdds") or {}
             a=offer.get("awayTeamOdds") or {}
             home_price=_american(h.get("moneyLine") or h.get("moneyline"))
             away_price=_american(a.get("moneyLine") or a.get("moneyline"))
-            if home_price is None or away_price is None:continue
+            if home_price is None or away_price is None:
+                diagnostics["offers_missing_moneylines"]+=1
+                continue
+            diagnostics["offers_with_two_moneylines"]+=1
+            if gid is None:continue
             diagnostics["events_with_both_moneylines"]+=1
             provider=offer.get("provider") or {}
             book=provider.get("name") if isinstance(provider,dict) else str(provider)
