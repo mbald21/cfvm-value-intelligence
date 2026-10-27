@@ -10,7 +10,7 @@ DATA=Path(__file__).parent/"data"
 DATA.mkdir(exist_ok=True)
 st.title("🏈 Better Betting with Baldwin")
 st.subheader("College Football Value Intelligence")
-st.info("CFVM v1.7 • Odds comparison diagnostics")
+st.info("CFVM v1.7.1 • Syntax repair")
 st.caption("Private research prototype • independently modeled probabilities • not verified betting advice")
 st.warning("Research prototype: forecasts refresh when the app is visited after 24 hours; no background scheduler or durable cloud database. Historical profitability is unverified.")
 report_path=DATA/"model_report.json"
@@ -57,7 +57,6 @@ with st.sidebar:
         try:
             q=pd.read_csv(upload,dtype={"game_id":str})
             if {"game_id","book","home_american","away_american","quote_utc"}.issubset(q.columns):
-        st.caption(f"Paid/public quote rows before validation: {len(q)}")
                 q.to_csv(DATA/"quotes.csv",index=False)
                 st.success("Quotes saved on this app instance.")
             else:st.error("Required columns: game_id,book,home_american,away_american,quote_utc")
