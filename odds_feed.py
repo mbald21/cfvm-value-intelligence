@@ -10,6 +10,8 @@ def norm(s):
     return re.sub(r"[^a-z0-9]","",str(s).lower().replace("university","").replace("college",""))
 
 def _american(value):
+    if isinstance(value,dict):
+        value=next((value.get(k) for k in ("value","american","odds","displayValue") if value.get(k) is not None),None)
     if value is None:return None
     try:
         x=float(str(value).replace("+","").replace("−","-"))
@@ -52,6 +54,8 @@ def fetch_public_odds(predictions):
     diagnostics["market_samples"]=[]
     diagnostics["offers_with_spread"]=0
     diagnostics["offers_with_total"]=0
+    diagnostics["offers_with_home_moneyline_field"]=0
+    diagnostics["offers_with_away_moneyline_field"]=0
     rows=[]
     for event in events:
         competition=(event.get("competitions") or [{}])[0]
@@ -87,8 +91,10 @@ def fetch_public_odds(predictions):
                 diagnostics["sample_odds_fields"].append({"offer_fields":list(offer.keys()),"home_odds_fields":list((offer.get("homeTeamOdds") or {}).keys()),"away_odds_fields":list((offer.get("awayTeamOdds") or {}).keys())})
             h=offer.get("homeTeamOdds") or {}
             a=offer.get("awayTeamOdds") or {}
-            home_price=_american(h.get("moneyLine") or h.get("moneyline"))
-            away_price=_american(a.get("moneyLine") or a.get("moneyline"))
+            home_price=_american(next((h.get(k) for k in ("moneyLine","moneyline","money_line") if h.get(k) is not None),None))
+            away_price=_american(next((a.get(k) for k in ("moneyLine","moneyline","money_line") if a.get(k) is not None),None))
+            if home_price is not None:diagnostics["offers_with_home_moneyline_field"]+=1
+            if away_price is not None:diagnostics["offers_with_away_moneyline_field"]+=1
             if home_price is None or away_price is None:
                 diagnostics["offers_missing_moneylines"]+=1
                 continue
@@ -99,5 +105,5 @@ def fetch_public_odds(predictions):
             book=provider.get("name") if isinstance(provider,dict) else str(provider)
             rows.append({"game_id":gid,"book":book or "ESPN-listed provider","home_american":home_price,"away_american":away_price,"quote_utc":diagnostics["retrieved_utc"],"source":"ESPN scoreboard (unofficial; snapshot retrieval time)"})
     diagnostics["matched_games"]=len(set(x["game_id"] for x in rows))
-    diagnostics["status"]="ok" if rows else "no_matching_moneylines"
+    diagnostics["status"]="ok" if rows else ("no_moneyline_prices" if diagnostics["offers_with_two_moneylines"]==0 else "moneylines_not_matched")
     return pd.DataFrame(rows),diagnostics
