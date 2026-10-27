@@ -46,7 +46,7 @@ def load():
         except Exception:pass
     if not fs:return pd.DataFrame()
     d=pd.concat(fs,ignore_index=True)
-    d["game_date"]=pd.to_datetime(d["game_date"],utc=True,errors="coerce")
+    d["game_date"]=pd.to_datetime(d["game_date"],utc=True,errors="coerce",format="mixed")
     d["season"]=pd.to_numeric(d["season"],errors="coerce")
     for c in ("home_score","away_score"):d[c]=pd.to_numeric(d.get(c),errors="coerce")
     d=d.dropna(subset=["game_id","game_date","home_team","away_team"])
@@ -75,6 +75,8 @@ def features(d):
 def train():
     d=load()
     source_files={p.name:{"bytes":p.stat().st_size} for p in DATA.glob("cfb_schedule_*.csv")}
+    raw26=pd.read_csv(DATA/"cfb_schedule_2026.csv") if (DATA/"cfb_schedule_2026.csv").exists() else pd.DataFrame()
+    raw26_checks={"rows":len(raw26),"columns":list(raw26.columns),"game_date_samples":raw26["game_date"].head(3).astype(str).tolist() if "game_date" in raw26 else [],"parsed_dates":int(pd.to_datetime(raw26["game_date"],utc=True,errors="coerce",format="mixed").notna().sum()) if "game_date" in raw26 else 0}
     if d.empty:raise RuntimeError("No data. Run: python data_pipeline.py download")
     f=features(d);f.to_csv(DATA/"features.csv",index=False)
     hist=f[f.completed & f.season.between(2015,2025) & (f.home_score!=f.away_score)].copy()
@@ -89,7 +91,7 @@ def train():
         tests.append({"season":year,"games":len(te),"brier":float(brier_score_loss(te.label,pred)),"accuracy":float(accuracy_score(te.label,pred>=.5))})
     model=LogisticRegression(max_iter=1000).fit(hist[["elo_diff","home_field"]],hist.label)
     future_dates=pd.to_datetime(f.game_date,utc=True,errors="coerce")>pd.Timestamp.now(tz="UTC")
-    diagnostics={"source_2026_rows":int((d.season==2026).sum()),"source_files":source_files,"features_2026_rows":int((f.season==2026).sum()),"uncompleted_2026_rows":int(((~f.completed)&(f.season==2026)).sum()),"future_dated_2026_rows":int((future_dates&(f.season==2026)).sum()),"future_uncompleted_2026_rows":int((future_dates&(~f.completed)&(f.season==2026)).sum()),"latest_2026_dates":f.loc[f.season==2026,"game_date"].tail(5).tolist(),"current_utc":pd.Timestamp.now(tz="UTC").isoformat()}
+    diagnostics={"source_2026_rows":int((d.season==2026).sum()),"source_files":source_files,"raw_2026":raw26_checks,"features_2026_rows":int((f.season==2026).sum()),"uncompleted_2026_rows":int(((~f.completed)&(f.season==2026)).sum()),"future_dated_2026_rows":int((future_dates&(f.season==2026)).sum()),"future_uncompleted_2026_rows":int((future_dates&(~f.completed)&(f.season==2026)).sum()),"latest_2026_dates":f.loc[f.season==2026,"game_date"].tail(5).tolist(),"current_utc":pd.Timestamp.now(tz="UTC").isoformat()}
     upcoming=f[(~f.completed)&(f.season>=2026)&future_dates].copy()
     if len(upcoming):upcoming["home_win_probability"]=model.predict_proba(upcoming[["elo_diff","home_field"]])[:,1]
     else:upcoming["home_win_probability"]=pd.Series(dtype=float)
