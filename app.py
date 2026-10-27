@@ -10,7 +10,7 @@ DATA=Path(__file__).parent/"data"
 DATA.mkdir(exist_ok=True)
 st.title("🏈 Better Betting with Baldwin")
 st.subheader("College Football Value Intelligence")
-st.info("CFVM v1.7.1 • Syntax repair")
+st.info("CFVM v1.8 • Visible sportsbook comparisons")
 st.caption("Private research prototype • independently modeled probabilities • not verified betting advice")
 st.warning("Research prototype: forecasts refresh when the app is visited after 24 hours; no background scheduler or durable cloud database. Historical profitability is unverified.")
 report_path=DATA/"model_report.json"
@@ -154,7 +154,7 @@ if not pred.empty and (quotes_path.exists() or not public_q.empty or not provide
                     decimal=1+odds/100 if odds>0 else 1+100/abs(odds)
                     prob=float(g.home_win_probability) if side=="home" else 1-float(g.home_win_probability)
                     ev=prob*decimal-1
-                    if ev>0:rows.append({"Game":f"{g.away_team} @ {g.home_team}","Pick":g.home_team if side=="home" else g.away_team,"Book":g["book"],"American odds":odds,"Model probability":round(prob,4),"Estimated ROI":round(ev,4),"Quote time (UTC)":g["quote_utc"]})
+                    rows.append({"Game":f"{g.away_team} @ {g.home_team}","Pick":g.home_team if side=="home" else g.away_team,"Book":g["book"],"American odds":odds,"Model probability":round(prob,4),"Estimated ROI":round(ev,4),"Quote time (UTC)":g["quote_utc"]})
                 except (ValueError,TypeError):continue
         board=pd.DataFrame(rows)
         if joined.empty:
@@ -170,11 +170,18 @@ b.metric("Odds comparisons",len(board))
 c.metric("Validated profitable strategies",0)
 st.subheader("Top 10 model-implied value opportunities")
 if board.empty:
-    st.warning("No sportsbook comparisons available yet — this is NOT a prediction failure.")
-    st.write("Forecasts are available below. ESPN may offer only spreads/totals for these games. A valid moneyline leaderboard requires actual two-sided moneyline prices, not inferred odds.")
+    st.warning("No valid sportsbook comparisons were calculated. Review the quote-validation diagnostics above.")
 else:
-    st.dataframe(board.head(10),hide_index=True,use_container_width=True)
-    st.caption("Illustrative expected return, not realized ROI. Check quote age, market availability, sportsbook limits and model calibration before acting.")
+    positive=board[board["Estimated ROI"]>0]
+    st.caption(f"{len(board)} evaluated sides across {board['Game'].nunique()} games • {len(positive)} positive model-implied EV sides")
+    if positive.empty:
+        st.info("No positive-EV sides currently found. Showing the highest-ranked comparisons, including negative EV, for transparency.")
+        st.dataframe(board.head(10),hide_index=True,use_container_width=True)
+    else:
+        st.dataframe(positive.head(10),hide_index=True,use_container_width=True)
+    with st.expander("All sportsbook comparisons (including negative EV)"):
+        st.dataframe(board,hide_index=True,use_container_width=True)
+    st.caption("Estimated ROI is a model-implied expectation, not realized or validated profitability.")
 st.subheader("🏈 Upcoming game forecasts and win probabilities")
 if pred.empty:
     st.warning("No upcoming forecasts were generated. This is a schedule/data issue, not proof that there are no upcoming games.")
