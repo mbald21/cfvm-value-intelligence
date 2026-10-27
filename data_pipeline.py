@@ -1,5 +1,6 @@
 """Reproducible CFVM baseline. Not the original v0.3 trained model."""
 import io,json,pathlib,requests
+from datetime import datetime, timezone
 import numpy as np,pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import brier_score_loss,accuracy_score
@@ -7,19 +8,30 @@ ROOT=pathlib.Path(__file__).parent
 DATA=ROOT/"data"
 DATA.mkdir(exist_ok=True)
 BASE="https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_cfb_schedules/cfb_schedule_{year}.csv"
+CURRENT_SOURCE="https://raw.githubusercontent.com/sportsdataverse/cfbfastR-data/main/schedules/csv/cfb_schedules_2026.csv"
 def download(start=2015,end=2026):
     log=[]
     for year in range(start,end+1):
         p=DATA/f"cfb_schedule_{year}.csv"
-        if p.exists() and p.stat().st_size>500:
+        if year!=2026 and p.exists() and p.stat().st_size>500:
             log.append({"year":year,"status":"cached"});continue
         try:
-            r=requests.get(BASE.format(year=year),timeout=35,headers={"User-Agent":"CFVM-Research/0.4"})
+            source=CURRENT_SOURCE if year==2026 else BASE.format(year=year)
+            r=requests.get(source,timeout=35,headers={"User-Agent":"CFVM-Research/0.5"})
             r.raise_for_status()
             df=pd.read_csv(io.BytesIO(r.content))
-            if not {"game_id","game_date","home_team","away_team"}.issubset(df.columns):raise ValueError("Unexpected source schema")
-            p.write_bytes(r.content)
-            log.append({"year":year,"status":"downloaded","rows":len(df)})
+            if year==2026:
+                required={"game_id","start_date","home_team","away_team","home_points","away_points","completed"}
+                if not required.issubset(df.columns):raise ValueError("2026 schedule missing required columns")
+                status=df["completed"].astype(str).str.lower().isin(["true","1","yes"])
+                df["game_date"]=df["start_date"]
+                df["home_score"]=pd.to_numeric(df["home_points"],errors="coerce").where(status)
+                df["away_score"]=pd.to_numeric(df["away_points"],errors="coerce").where(status)
+                df.to_csv(p,index=False)
+            else:
+                if not {"game_id","game_date","home_team","away_team"}.issubset(df.columns):raise ValueError("Unexpected historical source schema")
+            if year!=2026:p.write_bytes(r.content)
+            log.append({"year":year,"status":"downloaded","rows":len(df),"source":source,"retrieved_utc":datetime.now(timezone.utc).isoformat()})
         except Exception as e:log.append({"year":year,"status":"error","detail":str(e)[:200]})
     (DATA/"download_log.json").write_text(json.dumps(log,indent=2))
     return log
@@ -69,11 +81,11 @@ def train():
         pred=model.predict_proba(te[["elo_diff","home_field"]])[:,1]
         tests.append({"season":year,"games":len(te),"brier":float(brier_score_loss(te.label,pred)),"accuracy":float(accuracy_score(te.label,pred>=.5))})
     model=LogisticRegression(max_iter=1000).fit(hist[["elo_diff","home_field"]],hist.label)
-    upcoming=f[(~f.completed)&(f.season>=2026)].copy()
+    upcoming=f[(~f.completed)&(f.season>=2026)&(pd.to_datetime(f.game_date,utc=True)>pd.Timestamp.now(tz="UTC"))].copy()
     if len(upcoming):upcoming["home_win_probability"]=model.predict_proba(upcoming[["elo_diff","home_field"]])[:,1]
     else:upcoming["home_win_probability"]=pd.Series(dtype=float)
     upcoming[["game_id","game_date","home_team","away_team","home_win_probability"]].to_csv(DATA/"predictions.csv",index=False)
-    report={"model":"CFVM v0.4 Elo/logistic baseline, NOT original v0.3","train_games":len(hist),"historical_evaluation":tests,"upcoming_predictions":len(upcoming),"profitability_validated":False}
+    report={"model":"CFVM v0.4 Elo/logistic baseline, NOT original v0.3","train_games":len(hist),"historical_evaluation":tests,"upcoming_predictions":len(upcoming),"profitability_validated":False,"forecast_source":CURRENT_SOURCE,"generated_utc":datetime.now(timezone.utc).isoformat()}
     (DATA/"model_report.json").write_text(json.dumps(report,indent=2))
     return report
 if __name__=="__main__":
