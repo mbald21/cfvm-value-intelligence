@@ -24,6 +24,7 @@ def download(start=2015,end=2026):
                 required={"game_id","start_date","home_team","away_team","home_points","away_points","completed"}
                 if not required.issubset(df.columns):raise ValueError("2026 schedule missing required columns")
                 status=df["completed"].astype(str).str.lower().isin(["true","1","yes"])
+                df["season"]=2026
                 df["game_date"]=df["start_date"]
                 df["home_score"]=pd.to_numeric(df["home_points"],errors="coerce").where(status)
                 df["away_score"]=pd.to_numeric(df["away_points"],errors="coerce").where(status)
