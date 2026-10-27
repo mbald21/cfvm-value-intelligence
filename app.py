@@ -10,7 +10,7 @@ DATA=Path(__file__).parent/"data"
 DATA.mkdir(exist_ok=True)
 st.title("🏈 Better Betting with Baldwin")
 st.subheader("College Football Value Intelligence")
-st.info("CFVM v1.5 • Provider connection diagnostics")
+st.info("CFVM v1.6 • Moneyline parsing and matching")
 st.caption("Private research prototype • independently modeled probabilities • not verified betting advice")
 st.warning("Research prototype: forecasts refresh when the app is visited after 24 hours; no background scheduler or durable cloud database. Historical profitability is unverified.")
 report_path=DATA/"model_report.json"
@@ -90,7 +90,9 @@ with st.expander("Dedicated moneyline provider — TheOddsAPI",expanded=True):
         st.success(f"Retrieved {provider_status['moneyline_quotes']} sportsbook quotes across {provider_status['matched_games']} games.")
     else:
         st.info(f"Provider status: {provider_status['status']}. {provider_status.get('detail','')}")
-    st.caption(f"Provider HTTP status: {provider_status.get('http_status','not requested')} • Events: {provider_status.get('events',0)} • Matched games: {provider_status.get('matched_games',0)}")
+    st.caption(f"Provider HTTP status: {provider_status.get('http_status','not requested')} • Events: {provider_status.get('events',0)} • Matched events: {provider_status.get('matched_events',0)} • Moneyline markets: {provider_status.get('moneyline_markets_seen',0)} • Quoted games: {provider_status.get('matched_games',0)}")
+    with st.expander("Provider data diagnostics",expanded=False):
+        st.json({k:v for k,v in provider_status.items() if k not in ("api_key","key")})
 board=pd.DataFrame()
 public_q=pd.DataFrame()
 if not pred.empty:
