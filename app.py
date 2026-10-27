@@ -10,7 +10,7 @@ DATA=Path(__file__).parent/"data"
 DATA.mkdir(exist_ok=True)
 st.title("🏈 Better Betting with Baldwin")
 st.subheader("College Football Value Intelligence")
-st.info("CFVM v3.4 • Advanced efficiency research")
+st.info("CFVM v3.5 • Automated efficiency data")
 st.caption("Private research prototype • independently modeled probabilities • not verified betting advice")
 st.warning("Research prototype: forecasts refresh when the app is visited after 24 hours; no background scheduler or durable cloud database. Historical profitability is unverified.")
 report_path=DATA/"model_report.json"
@@ -232,6 +232,24 @@ else:
         conn.close()
 st.divider()
 st.markdown("## Model Competition Lab")
+with st.expander("Download historical EPA and success rates automatically",expanded=False):
+    st.write("Download historical per-game offensive EPA and success rate from documented SportsDataverse GitHub releases, match each team to its game, and build pregame-only research inputs.")
+    st.caption("This can take several minutes and may use substantial memory. Partial downloads and missing years are reported rather than silently filled.")
+    if st.button("Download 2018–2025 advanced statistics",key="download_advanced"):
+        from efficiency_download import download_efficiency
+        with st.spinner("Downloading and reconciling historical advanced team statistics..."):
+            try:
+                outcome=download_efficiency()
+                if outcome.get("status")=="ok":
+                    st.success(f"Downloaded {outcome['matched_team_games']} matched team-game records.")
+                    st.write("Feature preparation:",outcome.get("feature_build"))
+                else:st.warning(str(outcome))
+            except Exception as exc:st.error(f"Advanced data download failed: {exc}")
+    log_file=DATA/"efficiency_download_log.json"
+    if log_file.exists():
+        log=json.loads(log_file.read_text())
+        st.caption(f"Last download: {log.get('generated_utc','unknown')} · Matched team-games: {log.get('matched_team_games',0)}")
+        st.dataframe(pd.DataFrame(log.get("logs",[])),hide_index=True,use_container_width=True)
 with st.expander("Add advanced team efficiency data (experimental)",expanded=False):
     st.write("Upload one row per team per completed game. Required CSV columns: game_id, team, epa_per_play, success_rate.")
     st.caption("EPA measures how much plays change scoring expectations. Success rate measures how consistently plays are productive. These inputs do not change live picks.")
