@@ -10,7 +10,7 @@ DATA=Path(__file__).parent/"data"
 DATA.mkdir(exist_ok=True)
 st.title("🏈 Better Betting with Baldwin")
 st.subheader("College Football Value Intelligence")
-st.info("CFVM v1.4 • Secure TheOddsAPI integration")
+st.info("CFVM v1.5 • Provider connection diagnostics")
 st.caption("Private research prototype • independently modeled probabilities • not verified betting advice")
 st.warning("Research prototype: forecasts refresh when the app is visited after 24 hours; no background scheduler or durable cloud database. Historical profitability is unverified.")
 report_path=DATA/"model_report.json"
@@ -79,14 +79,18 @@ else:
     provider_q=pd.DataFrame()
     provider_status={"status":"not_configured"}
 with st.expander("Dedicated moneyline provider — TheOddsAPI",expanded=True):
+    if st.button("Retry TheOddsAPI now",key="retry_paid_odds"):
+        st.cache_data.clear()
+        st.rerun()
     if provider_status["status"]=="not_configured":
         st.info("Add THEODDSAPI_KEY to Streamlit Secrets to connect. NCAAF requires an eligible provider plan.")
-    elif provider_status["status"]=="access_restricted":
-        st.warning("The provider key is connected, but your current plan does not grant NCAAF access.")
+    elif provider_status["status"] in ("access_restricted","access_denied","authentication_failed","endpoint_not_found"):
+        st.error(f"TheOddsAPI request failed: {provider_status.get('status')} (HTTP {provider_status.get('http_status','unknown')}). {provider_status.get('detail','')}")
     elif provider_status["status"]=="ok":
         st.success(f"Retrieved {provider_status['moneyline_quotes']} sportsbook quotes across {provider_status['matched_games']} games.")
     else:
         st.info(f"Provider status: {provider_status['status']}. {provider_status.get('detail','')}")
+    st.caption(f"Provider HTTP status: {provider_status.get('http_status','not requested')} • Events: {provider_status.get('events',0)} • Matched games: {provider_status.get('matched_games',0)}")
 board=pd.DataFrame()
 public_q=pd.DataFrame()
 if not pred.empty:
