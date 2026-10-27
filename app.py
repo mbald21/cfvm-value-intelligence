@@ -8,8 +8,9 @@ import streamlit as st
 st.set_page_config(page_title="CFVM | Value Intelligence", page_icon="🏈", layout="wide")
 DATA=Path(__file__).parent/"data"
 DATA.mkdir(exist_ok=True)
-st.title("🏈 CFVM | Value Intelligence")
-st.caption("Dashboard build: v0.6 — schedule refresh + value leaderboard")
+st.title("🏈 Better Betting with Baldwin")
+st.subheader("College Football Value Intelligence")
+st.info("CFVM v0.7 • Forecasts available from historical model • Live sportsbook odds NOT CONNECTED")
 st.caption("Private research prototype • independently modeled probabilities • not verified betting advice")
 st.warning("Research prototype: forecasts refresh when the app is visited after 24 hours; no background scheduler or durable cloud database. Historical profitability is unverified.")
 report_path=DATA/"model_report.json"
@@ -85,15 +86,17 @@ if not pred.empty and quotes_path.exists():
         board=pd.DataFrame(rows)
         if not board.empty:board=board.sort_values("Estimated ROI",ascending=False)
 a,b,c=st.columns(3)
-a.metric("Predicted games",len(pred))
-b.metric("Positive-EV hypotheses",len(board))
+a.metric("Upcoming game forecasts",len(pred))
+b.metric("Odds comparisons",len(board))
 c.metric("Validated profitable strategies",0)
 st.subheader("Top 10 model-implied value opportunities")
-if board.empty:st.info("No comparisons yet. Train the baseline and import independently sourced sportsbook quotes.")
+if board.empty:
+    st.warning("No sportsbook comparisons available yet — this is NOT a prediction failure.")
+    st.write("Your game predictions are shown below. To rank betting value, CFVM still needs timestamped sportsbook moneylines. Live odds integration is the next step.")
 else:
     st.dataframe(board.head(10),hide_index=True,use_container_width=True)
     st.caption("Illustrative expected return, not realized ROI. Check quote age, market availability, sportsbook limits and model calibration before acting.")
-st.subheader("Game explorer")
+st.subheader("🏈 Upcoming game forecasts and win probabilities")
 if pred.empty:
     st.warning("No upcoming forecasts were generated. This is a schedule/data issue, not proof that there are no upcoming games.")
     st.info("Open Download diagnostics in the sidebar. Check the 2026 row for downloaded status, number of rows, or an error. Then send that row to me.")
