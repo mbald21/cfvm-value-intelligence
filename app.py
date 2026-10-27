@@ -10,7 +10,7 @@ DATA=Path(__file__).parent/"data"
 DATA.mkdir(exist_ok=True)
 st.title("🏈 Better Betting with Baldwin")
 st.subheader("College Football Value Intelligence")
-st.info("CFVM v2.1 • Visible Top 10 leaderboard")
+st.info("CFVM v3.0 • Intelligence dashboard")
 st.caption("Private research prototype • independently modeled probabilities • not verified betting advice")
 st.warning("Research prototype: forecasts refresh when the app is visited after 24 hours; no background scheduler or durable cloud database. Historical profitability is unverified.")
 report_path=DATA/"model_report.json"
@@ -78,7 +78,7 @@ if provider_key and not pred.empty:
 else:
     provider_q=pd.DataFrame()
     provider_status={"status":"not_configured"}
-with st.expander("Dedicated moneyline provider — TheOddsAPI",expanded=True):
+with st.expander("Live sportsbook connection · TheOddsAPI",expanded=False):
     if st.button("Retry TheOddsAPI now",key="retry_paid_odds"):
         st.cache_data.clear()
         st.rerun()
@@ -94,52 +94,9 @@ with st.expander("Dedicated moneyline provider — TheOddsAPI",expanded=True):
     with st.expander("Provider data diagnostics",expanded=False):
         st.json({k:v for k,v in provider_status.items() if k not in ("api_key","key")})
 board=pd.DataFrame()
-public_q=pd.DataFrame()
-if not pred.empty:
-    from odds_feed import fetch_public_odds
-    if st.button("🔄 Check ESPN odds now",key="refresh_espn_odds"):
-        st.cache_data.clear()
-        st.rerun()
-    @st.cache_data(ttl=300,show_spinner=False)
-    def get_public_quotes(games_key):
-        return fetch_public_odds(pred)
-    with st.spinner("Checking public college football moneylines..."):
-        public_q,odds_diag=get_public_quotes(("espn-daily-v5",datetime.now(timezone.utc).strftime("%Y%m%d"),tuple(pred.game_id.astype(str))))
-    with st.expander("ESPN public feed diagnostics (optional — paid odds are used above)",expanded=False):
-        st.subheader("Sportsbook odds connection")
-        c1,c2,c3=st.columns(3)
-        c1.metric("ESPN events found",odds_diag.get("events",0))
-        c2.metric("Events with odds entries",odds_diag.get("priced_events",0))
-        c3.metric("Matched moneyline games",odds_diag.get("matched_games",0))
-        if odds_diag.get("status")=="source_error":
-            st.error("ESPN request failed; open technical details below.")
-        elif not odds_diag.get("priced_events"):
-            st.info("ESPN returned no odds entries in the checked schedule window. No betting prices can be displayed from this feed.")
-        elif not odds_diag.get("matched_games"):
-            st.info("ESPN returned odds entries, but no complete home/away moneyline pair could be linked to a CFVM forecast.")
-        with st.expander("Technical feed diagnostics (optional)",expanded=False):
-            st.json(odds_diag)
-            st.caption("Unofficial ESPN source. Retrieval time is not necessarily the sportsbook quote time.")
-        if odds_diag.get("priced_events",0)>0 and odds_diag.get("offers_with_two_moneylines",0)==0:
-            st.info("ESPN has betting odds entries, but none contain complete home-and-away moneylines in the fields currently checked. These may be spread or total markets.")
-        elif odds_diag.get("offers_with_two_moneylines",0)>0 and odds_diag.get("matched_games",0)==0:
-            st.info("Complete moneyline pairs exist, but they do not match CFVM games yet. See unmatched examples in technical diagnostics.")
-        if odds_diag.get("market_samples"):
-            st.markdown("**Sample ESPN markets (not moneyline opportunities)**")
-            samples=pd.DataFrame(odds_diag["market_samples"])
-            st.dataframe(samples,hide_index=True,use_container_width=True)
-        m1,m2,m3=st.columns(3)
-        m1.metric("Spread offers",odds_diag.get("offers_with_spread",0))
-        m2.metric("Total offers",odds_diag.get("offers_with_total",0))
-        m3.metric("Complete moneyline offers",odds_diag.get("offers_with_two_moneylines",0))
-        st.caption("Spreads and totals cannot be substituted for moneyline odds in expected-value calculations.")
-        if not public_q.empty:
-            st.success(f"Matched moneylines for {odds_diag['matched_games']} games.")
-        else:
-            st.warning("No matched public moneylines yet. Check the event and odds counts above. Predictions remain available.")
+public_q=pd.DataFrame()  # Paid TheOddsAPI is the primary and only automatic odds source.
 if not pred.empty and (quotes_path.exists() or not public_q.empty or not provider_q.empty):
     q=pd.read_csv(quotes_path,dtype={"game_id":str}) if quotes_path.exists() else pd.DataFrame()
-    if not public_q.empty:q=pd.concat([q,public_q],ignore_index=True)
     if not provider_q.empty:q=pd.concat([q,provider_q],ignore_index=True)
     if {"game_id","book","home_american","away_american","quote_utc"}.issubset(q.columns):
         raw_quote_times=q["quote_utc"].astype(str).copy()
@@ -182,31 +139,88 @@ if not pred.empty and (quotes_path.exists() or not public_q.empty or not provide
             with st.expander("Comparison diagnostics"):
                 st.dataframe(joined[["away_team","home_team","book","home_american","away_american","home_win_probability"]].head(15),hide_index=True,use_container_width=True)
         if not board.empty:board=board.sort_values("Estimated ROI",ascending=False)
-a,b,c=st.columns(3)
-a.metric("Upcoming game forecasts",len(pred))
-b.metric("Odds comparisons",len(board))
-c.metric("Validated profitable strategies",0)
-st.subheader("🏆 Top 10 model-implied moneyline opportunities")
-if board.empty:
-    st.warning("No valid sportsbook comparisons were calculated. Review quote diagnostics.")
+# The intelligence view intentionally shows unique games, not ten near-duplicate sportsbook quotes.
+st.markdown("""
+<style>
+.block-container {max-width: 1380px; padding-top: 2rem;}
+[data-testid="stMetric"] {background: #121e32; border: 1px solid #2b405d; padding: 16px; border-radius: 14px;}
+[data-testid="stMetric"] label, [data-testid="stMetric"] div {color: #f1f5fa !important;}
+.hero {padding: 30px; border-radius: 20px; background: linear-gradient(120deg,#10233c,#173e57); color: #f7fbff; margin-bottom: 22px;}
+.hero h2 {color:#ffffff; font-size:2rem; margin:0 0 10px;}
+.hero p {color:#d9e7f2; line-height:1.6;}
+.kicker {font-size:.8rem; letter-spacing:.13em; color:#83d6d2; font-weight:700;}
+.pick {border:1px solid #2d4961; border-radius:15px; padding:18px; background:#12243a; color:#f5f8fc; min-height:180px;}
+.pick .rank {color:#8edbd1; font-size:.8rem; font-weight:700;}
+.pick .team {font-size:1.25rem; font-weight:750; margin:10px 0;}
+.pick .detail {color:#d0dce9; font-size:.9rem; line-height:1.8;}
+.pick .edge {color:#87e4b3; font-weight:750; font-size:1.2rem;}
+</style>
+""",unsafe_allow_html=True)
+st.markdown("""<div class="hero"><div class="kicker">COLLEGE FOOTBALL VALUE INTELLIGENCE</div>
+<h2>Where our forecast disagrees with the sportsbook.</h2>
+<p>CFVM independently estimates each team's chance of winning from historical results, evolving Elo team strength, and home-field advantage. It then compares that probability against real moneyline prices from TheOddsAPI to identify potential mispricing. The model does not use sportsbook odds to generate its forecasts.</p>
+<p><b>01 · Forecast</b> &nbsp; Team strength + venue &nbsp;&nbsp; <b>02 · Compare</b> &nbsp; Live sportsbook prices &nbsp;&nbsp; <b>03 · Explain</b> &nbsp; Win probability, implied probability and expected value</p></div>""",unsafe_allow_html=True)
+if not board.empty:
+    board=board.copy()
+    board["Estimated ROI"]=pd.to_numeric(board["Estimated ROI"],errors="coerce")
+    board["Model probability"]=pd.to_numeric(board["Model probability"],errors="coerce")
+    board["Market implied probability"]=board["American odds"].apply(lambda o: (100/(float(o)+100)) if float(o)>0 else abs(float(o))/(abs(float(o))+100))
+    board["Edge (pp)"]=100*(board["Model probability"]-board["Market implied probability"])
+    board["Estimated EV %"]=100*board["Estimated ROI"]
+    positive=board[board["Estimated ROI"]>0].sort_values("Estimated ROI",ascending=False)
+    top=positive.drop_duplicates("Game").head(10)
 else:
-    positive=board[board["Estimated ROI"]>0]
-    ranked=positive.head(10) if not positive.empty else board.head(10)
-    st.caption(f"{len(board)} evaluated sides across {board['Game'].nunique()} games • {len(positive)} positive model-implied EV sides")
-    if positive.empty:
-        st.info("No positive model-implied EV found; displaying the ten highest-ranked comparisons.")
-    st.markdown("**Game | Pick | Sportsbook | Moneyline | Model win % | Estimated EV %**")
-    for rank,(_,r) in enumerate(ranked.iterrows(),start=1):
-        moneyline=f"{int(round(r['American odds'])):+d}"
-        model_pct=100*float(r["Model probability"])
-        ev_pct=100*float(r["Estimated ROI"])
-        st.markdown(f"**{rank}. {r['Pick']}** — {r['Game']}  \\n**{r['Book']}** · Moneyline **{moneyline}** · Model win **{model_pct:.1f}%** · Estimated EV **{ev_pct:+.1f}%**")
-        st.divider()
-    st.dataframe(ranked,hide_index=True,use_container_width=True)
-    with st.expander("All sportsbook comparisons (including negative EV)",expanded=False):
-        st.dataframe(board,hide_index=True,use_container_width=True)
-    st.caption("Model-implied expected value is not a proven profit or a validated betting strategy.")
-st.subheader("🏈 Upcoming game forecasts and win probabilities")
+    positive=pd.DataFrame()
+    top=pd.DataFrame()
+k1,k2,k3,k4=st.columns(4)
+k1.metric("Upcoming forecasts",len(pred))
+k2.metric("Games with moneylines",board["Game"].nunique() if not board.empty else 0)
+k3.metric("Positive EV comparisons",len(positive))
+k4.metric("Top model-implied EV",f"{100*positive['Estimated ROI'].max():.1f}%" if not positive.empty else "—")
+st.caption("A positive EV is a model estimate, not guaranteed profit. Multiple sportsbooks can quote the same game.")
+st.markdown("## Top 10 opportunities")
+st.caption("Ten different matchups, ranked by the best positive model-implied expected value available. Expand each card for the underlying inputs.")
+if top.empty:
+    st.info("No positive model-implied opportunities are available from current moneylines.")
+else:
+    feature_path=DATA/"features.csv"
+    if feature_path.exists():
+        features=pd.read_csv(feature_path,dtype={"game_id":str},usecols=["game_id","elo_diff","home_field"])
+        details=pred[["game_id","home_team","away_team"]].merge(features,on="game_id",how="left")
+        detail_index={(str(r.away_team),str(r.home_team)):r for _,r in details.iterrows()}
+    else:
+        detail_index={}
+    items=top.to_dict("records")
+    for offset in range(0,len(items),2):
+        cols=st.columns(2,gap="medium")
+        for idx,col in enumerate(cols):
+            if offset+idx>=len(items):continue
+            r=items[offset+idx]
+            rank=offset+idx+1
+            odds=f"{int(round(r['American odds'])):+d}"
+            with col:
+                st.markdown(f"""<div class="pick"><div class="rank">#{rank:02d} · MODEL-IMPLIED VALUE</div>
+<div class="team">{r['Pick']}</div>
+<div class="detail">{r['Game']}<br>{r['Book']} · Moneyline <b>{odds}</b></div>
+<div class="detail">Model win chance: <b>{100*r['Model probability']:.1f}%</b></div>
+<div class="edge">Estimated EV {r['Estimated EV %']:+.1f}%</div></div>""",unsafe_allow_html=True)
+                with st.expander("Why this pick? · Model and market"):
+                    st.write(f"Model win probability: **{100*r['Model probability']:.1f}%**")
+                    st.write(f"Sportsbook implied probability (before removing vig): **{100*r['Market implied probability']:.1f}%**")
+                    st.write(f"Model minus implied probability: **{r['Edge (pp)']:+.1f} percentage points**")
+                    st.write(f"Estimated return per $100 staked: **${100*r['Estimated ROI']:+.2f}** (expectation, not guaranteed)")
+                    away,home=r["Game"].split(" @ ",1)
+                    detail=detail_index.get((away,home))
+                    if detail is not None:
+                        if pd.notna(detail.elo_diff):
+                            st.write(f"Pre-game Elo strength difference (home minus away): **{detail.elo_diff:+.0f}**")
+                        st.write("Venue adjustment: **Home-field advantage**" if detail.home_field==1 else "Venue adjustment: **Neutral site**")
+                    st.caption("Current baseline inputs: historical game results, pre-game Elo difference, and home-field indicator. Injuries, weather, rosters and player availability are not modeled.")
+                    alternatives=board[board["Game"]==r["Game"]].sort_values("Estimated ROI",ascending=False).head(8)
+                    st.dataframe(alternatives[["Pick","Book","American odds","Model probability","Estimated EV %"]],hide_index=True,use_container_width=True)
+st.markdown("## All upcoming games")
+st.caption("Search the complete forecast schedule; sportsbook prices appear when available.")
+st.subheader("Upcoming game forecasts and win probabilities")
 if pred.empty:
     st.warning("No upcoming forecasts were generated. This is a schedule/data issue, not proof that there are no upcoming games.")
     st.info("Open Download diagnostics in the sidebar. Check the 2026 row for downloaded status, number of rows, or an error. Then send that row to me.")
