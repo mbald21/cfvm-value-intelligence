@@ -22,20 +22,47 @@ def fetch_odds(predictions,key):
         events=payload.get("data",[]) if isinstance(payload,dict) else payload
         if not isinstance(events,list):raise ValueError("Unexpected provider response structure")
         status["events"]=len(events)
+        status["sample_event_keys"]=list(events[0].keys())[:25] if events else []
+        status["sample_team_names"]=[{"home":e.get("home_team"),"away":e.get("away_team"),"teams":e.get("teams")} for e in events[:3]]
+        status["sample_market_keys"]=[]
         rows=[]
+        pred_index={}
+        for _,g in predictions.iterrows():
+            pred_index.setdefault((_norm(g.home_team),_norm(g.away_team)),[]).append(g)
+        event_matches=0
+        offers_seen=0
         for event in events:
-            home=event.get("home_team","")
-            away=event.get("away_team","")
-            matches=predictions[(predictions.home_team.map(_norm)==_norm(home))&(predictions.away_team.map(_norm)==_norm(away))]
-            if len(matches)!=1:continue
-            game=matches.iloc[0]
-            for book in event.get("books",[]):
-                if book.get("market")!="h2h":continue
-                outcomes=book.get("outcomes",[])
-                hp=next((o.get("price") for o in outcomes if _norm(o.get("name"))==_norm(home)),None)
-                ap=next((o.get("price") for o in outcomes if _norm(o.get("name"))==_norm(away)),None)
-                if hp is None or ap is None:continue
-                rows.append({"game_id":str(game.game_id),"book":book.get("book","unknown"),"home_american":hp,"away_american":ap,"quote_utc":book.get("updated_at") or datetime.now(timezone.utc).isoformat()})
+            home=event.get("home_team") or event.get("homeTeam") or ""
+            away=event.get("away_team") or event.get("awayTeam") or ""
+            teams=event.get("teams") or []
+            if (not home or not away) and len(teams)==2:
+                home,away=teams[0],teams[1]
+            matches=pred_index.get((_norm(home),_norm(away)),[])
+            if len(matches)!=1:
+                matches=pred_index.get((_norm(away),_norm(home)),[])
+                if len(matches)!=1:continue
+            event_matches+=1
+            game=matches[0]
+            books=event.get("books") or event.get("bookmakers") or []
+            if isinstance(books,dict):books=list(books.values())
+            for book in books:
+                markets=book.get("markets") or [book]
+                if isinstance(markets,dict):markets=list(markets.values())
+                for market in markets:
+                    if len(status["sample_market_keys"])<3:
+                        status["sample_market_keys"].append({"book_keys":list(book.keys())[:12],"market_keys":list(market.keys())[:12]})
+                    market_type=market.get("key") or market.get("market") or market.get("market_key")
+                    if market_type not in ("h2h","moneyline","moneylines"):continue
+                    offers_seen+=1
+                    outcomes=market.get("outcomes") or market.get("odds") or []
+                    if isinstance(outcomes,dict):
+                        outcomes=[{"name":k,"price":v} for k,v in outcomes.items()]
+                    hp=next((o.get("price",o.get("odds")) for o in outcomes if _norm(o.get("name") or o.get("team"))==_norm(game.home_team)),None)
+                    ap=next((o.get("price",o.get("odds")) for o in outcomes if _norm(o.get("name") or o.get("team"))==_norm(game.away_team)),None)
+                    if hp is None or ap is None:continue
+                    rows.append({"game_id":str(game.game_id),"book":book.get("title") or book.get("key") or book.get("book") or "unknown","home_american":hp,"away_american":ap,"quote_utc":market.get("last_update") or book.get("last_update") or book.get("updated_at") or datetime.now(timezone.utc).isoformat()})
+        status["matched_events"]=event_matches
+        status["moneyline_markets_seen"]=offers_seen
         status["matched_games"]=len(set(x["game_id"] for x in rows))
         status["moneyline_quotes"]=len(rows)
         status["status"]="ok" if rows else "no_matched_quotes"
