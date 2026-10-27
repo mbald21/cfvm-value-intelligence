@@ -25,9 +25,9 @@ def build():
     # Aggregate by date before shifting: games played on the same day cannot inform one another.
     daily=raw.groupby(["team","game_date"],as_index=False).agg(epa_per_play=("epa_per_play","mean"),success_rate=("success_rate","mean"))
     daily=daily.sort_values(["team","game_date"])
-    daily["prior_epa"]=daily.groupby("team")["epa_per_play"].transform(lambda x:x.shift().expanding(min_periods=3).mean())
-    daily["prior_success"]=daily.groupby("team")["success_rate"].transform(lambda x:x.shift().expanding(min_periods=3).mean())
-    # asof joins require globally sorted dates, not team-first sorting
+    daily["prior_epa"]=daily.groupby("team")["epa_per_play"].transform(lambda x:x.expanding(min_periods=3).mean().reset_index(level=0,drop=True))
+    daily["prior_success"]=daily.groupby("team")["success_rate"].transform(lambda x:x.expanding(min_periods=3).mean().reset_index(level=0,drop=True))
+    # Exact-match dates are excluded at the join, so these aggregates include only prior dates.
     lookup=daily[["team","game_date","prior_epa","prior_success"]].sort_values("game_date")
     result=games.copy()
     result["game_date"]=pd.to_datetime(result.game_date,utc=True,errors="coerce")
