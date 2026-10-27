@@ -33,6 +33,12 @@ def evaluate():
     df["completed"]=df["completed"].astype(str).str.lower().isin(["true","1","yes"])
     hist=df[df["completed"] & df["season"].between(2015,2025) & (df.home_score!=df.away_score)].dropna(subset=FEATURES+["home_score","away_score"]).copy()
     hist["won"]=(hist.home_score>hist.away_score).astype(int)
+    advanced_cols=["home_off_epa_prior","away_off_epa_prior","home_success_prior","away_success_prior"]
+    advanced_path=DATA/"advanced_features.csv"
+    if advanced_path.exists():
+        adv=pd.read_csv(advanced_path,dtype={"game_id":str})
+        hist["game_id"]=hist["game_id"].astype(str)
+        hist=hist.merge(adv[["game_id"]+advanced_cols].drop_duplicates("game_id"),on="game_id",how="left")
     if len(hist)<500:return {"status":"insufficient_data","games":len(hist)}
     seasons=range(2018,2026)
     rows=[]
@@ -47,6 +53,14 @@ def evaluate():
             model.fit(xtr,ytr)
             forecasts[name]=np.clip(model.predict_proba(xte)[:,1],.001,.999)
         forecasts["Equal-weight ensemble"]=np.mean(np.column_stack(list(forecasts.values())),axis=1)
+        if all(c in hist.columns for c in advanced_cols):
+            tr_adv=train.dropna(subset=advanced_cols)
+            te_adv=test.dropna(subset=advanced_cols)
+            if len(tr_adv)>=500 and len(te_adv)>=20 and tr_adv.won.nunique()==2:
+                enhanced=HistGradientBoostingClassifier(max_iter=100,max_leaf_nodes=10,min_samples_leaf=40,l2_regularization=10,random_state=42)
+                enhanced.fit(tr_adv[FEATURES+advanced_cols],tr_adv.won)
+                p=np.clip(enhanced.predict_proba(te_adv[FEATURES+advanced_cols])[:,1],.001,.999)
+                rows.append({"Season":int(season),"Model":"EPA + success + Elo (experimental)","Games":len(te_adv),"Correct":int(accuracy_score(te_adv.won,p>=.5)*len(te_adv)),"Brier total":float(np.square(p-te_adv.won.to_numpy()).sum()),"Log loss total":float(log_loss(te_adv.won,p,labels=[0,1])*len(te_adv))})
         for name,probs in forecasts.items():
             rows.append({"Season":int(season),"Model":name,"Games":len(test),"Correct":int(accuracy_score(yte,probs>=.5)*len(test)),"Brier total":float(np.square(probs-yte.to_numpy()).sum()),"Log loss total":float(log_loss(yte,probs,labels=[0,1])*len(test))})
     if not rows:return {"status":"no_test_seasons"}
@@ -56,7 +70,7 @@ def evaluate():
         games=int(group.Games.sum())
         summary.append({"Model":name,"Test games":games,"Win pick accuracy":round(group.Correct.sum()/games,4),"Brier score":round(group["Brier total"].sum()/games,4),"Log loss":round(group["Log loss total"].sum()/games,4)})
     summary=sorted(summary,key=lambda r:r["Brier score"])
-    result={"status":"ok","features":FEATURES,"method":"Train on all seasons before each test year (2018-2025); never train on the tested year.","winner_by_brier":summary[0]["Model"],"leaderboard":summary,"season_results":rows,"limitations":"Only pregame Elo difference and home-field indicator are available. No injuries, EPA, rosters, odds-history backtest, verified profit or proven betting edge. Ensemble averages three models without tuning."}
+    result={"status":"ok","features":FEATURES,"method":"Train on all seasons before each test year (2018-2025); never train on the tested year.","winner_by_brier":summary[0]["Model"],"leaderboard":summary,"season_results":rows,"limitations":"Baseline uses Elo and venue. Optional experimental model uses pregame EPA and success-rate averages, if uploaded. Different coverage means scores are not strictly comparable. No verified betting ROI."}
     (DATA/"model_competition.json").write_text(json.dumps(result,indent=2))
     return result
 
