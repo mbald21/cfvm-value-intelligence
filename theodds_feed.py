@@ -65,8 +65,8 @@ def fetch_odds(predictions,key):
                     outcomes=market.get("outcomes") or market.get("odds") or []
                     if isinstance(outcomes,dict):
                         outcomes=[{"name":k,"price":v} for k,v in outcomes.items()]
-                    hp=next((o.get("price",o.get("odds")) for o in outcomes if _norm(o.get("name") or o.get("team"))==_norm(game.home_team)),None)
-                    ap=next((o.get("price",o.get("odds")) for o in outcomes if _norm(o.get("name") or o.get("team"))==_norm(game.away_team)),None)
+                    hp=next((o.get("price",o.get("odds")) for o in outcomes if team_matches(o.get("name") or o.get("team"),game.home_team)),None)
+                    ap=next((o.get("price",o.get("odds")) for o in outcomes if team_matches(o.get("name") or o.get("team"),game.away_team)),None)
                     if hp is None or ap is None:continue
                     rows.append({"game_id":str(game.game_id),"book":book.get("title") or book.get("key") or book.get("book") or "unknown","home_american":hp,"away_american":ap,"quote_utc":market.get("last_update") or book.get("last_update") or book.get("updated_at") or datetime.now(timezone.utc).isoformat()})
         status["matched_events"]=event_matches
