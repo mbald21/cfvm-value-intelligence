@@ -31,6 +31,10 @@ def fetch_public_odds(predictions):
         diagnostics["detail"]=str(exc)[:220]
         return pd.DataFrame(),diagnostics
     diagnostics["events"]=len(events)
+    diagnostics["events_with_odds"]=0
+    diagnostics["events_with_both_moneylines"]=0
+    diagnostics["matched_by_id"]=0
+    diagnostics["matched_by_team_names"]=0
     rows=[]
     for event in events:
         competition=(event.get("competitions") or [{}])[0]
@@ -41,12 +45,18 @@ def fetch_public_odds(predictions):
         offers=competition.get("odds") or []
         if not offers:continue
         diagnostics["priced_events"]+=1
+        diagnostics["events_with_odds"]+=1
         def names(t):
             d=t.get("team") or {}
             return [d.get("displayName"),d.get("shortDisplayName"),d.get("name"),d.get("abbreviation")]
         home_names={norm(x) for x in names(home) if x}
         away_names={norm(x) for x in names(away) if x}
-        candidates=predictions[predictions.home_team.map(norm).isin(home_names)&predictions.away_team.map(norm).isin(away_names)]
+        event_id=str(event.get("id",""))
+        candidates=predictions[predictions.game_id.astype(str)==event_id]
+        if len(candidates)==1:diagnostics["matched_by_id"]+=1
+        else:
+            candidates=predictions[predictions.home_team.map(norm).isin(home_names)&predictions.away_team.map(norm).isin(away_names)]
+            if len(candidates)==1:diagnostics["matched_by_team_names"]+=1
         if len(candidates)!=1:continue
         gid=str(candidates.iloc[0]["game_id"])
         for offer in offers:
@@ -55,6 +65,7 @@ def fetch_public_odds(predictions):
             home_price=_american(h.get("moneyLine") or h.get("moneyline"))
             away_price=_american(a.get("moneyLine") or a.get("moneyline"))
             if home_price is None or away_price is None:continue
+            diagnostics["events_with_both_moneylines"]+=1
             provider=offer.get("provider") or {}
             book=provider.get("name") if isinstance(provider,dict) else str(provider)
             rows.append({"game_id":gid,"book":book or "ESPN-listed provider","home_american":home_price,"away_american":away_price,"quote_utc":diagnostics["retrieved_utc"],"source":"ESPN scoreboard (unofficial; snapshot retrieval time)"})
