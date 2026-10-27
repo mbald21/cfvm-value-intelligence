@@ -49,6 +49,9 @@ def fetch_public_odds(predictions):
     diagnostics["offers_missing_moneylines"]=0
     diagnostics["sample_odds_fields"]=[]
     diagnostics["unmatched_example"]=[]
+    diagnostics["market_samples"]=[]
+    diagnostics["offers_with_spread"]=0
+    diagnostics["offers_with_total"]=0
     rows=[]
     for event in events:
         competition=(event.get("competitions") or [{}])[0]
@@ -76,6 +79,10 @@ def fetch_public_odds(predictions):
         gid=str(candidates.iloc[0]["game_id"]) if len(candidates)==1 else None
         for offer in offers:
             diagnostics["odds_offers"]+=1
+            if offer.get("spread") is not None:diagnostics["offers_with_spread"]+=1
+            if offer.get("overUnder") is not None:diagnostics["offers_with_total"]+=1
+            if len(diagnostics["market_samples"])<5:
+                diagnostics["market_samples"].append({"game":f"{(away.get(chr(116)+chr(101)+chr(97)+chr(109)) or {}).get(chr(100)+chr(105)+chr(115)+chr(112)+chr(108)+chr(97)+chr(121)+chr(78)+chr(97)+chr(109)+chr(101))} @ {(home.get(chr(116)+chr(101)+chr(97)+chr(109)) or {}).get(chr(100)+chr(105)+chr(115)+chr(112)+chr(108)+chr(97)+chr(121)+chr(78)+chr(97)+chr(109)+chr(101))}","spread":offer.get("spread"),"total":offer.get("overUnder"),"details":offer.get("details"),"provider":(offer.get("provider") or {}).get("name") if isinstance(offer.get("provider"),dict) else None})
             if len(diagnostics["sample_odds_fields"])<2:
                 diagnostics["sample_odds_fields"].append({"offer_fields":list(offer.keys()),"home_odds_fields":list((offer.get("homeTeamOdds") or {}).keys()),"away_odds_fields":list((offer.get("awayTeamOdds") or {}).keys())})
             h=offer.get("homeTeamOdds") or {}
