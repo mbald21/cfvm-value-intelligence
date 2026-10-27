@@ -10,7 +10,7 @@ DATA=Path(__file__).parent/"data"
 DATA.mkdir(exist_ok=True)
 st.title("🏈 Better Betting with Baldwin")
 st.subheader("College Football Value Intelligence")
-st.info("CFVM v1.1 • Odds coverage vs game matching diagnostics")
+st.info("CFVM v1.2 • ESPN spread and total market visibility")
 st.caption("Private research prototype • independently modeled probabilities • not verified betting advice")
 st.warning("Research prototype: forecasts refresh when the app is visited after 24 hours; no background scheduler or durable cloud database. Historical profitability is unverified.")
 report_path=DATA/"model_report.json"
@@ -76,7 +76,7 @@ if not pred.empty:
     def get_public_quotes(games_key):
         return fetch_public_odds(pred)
     with st.spinner("Checking public college football moneylines..."):
-        public_q,odds_diag=get_public_quotes(("espn-daily-v3",datetime.now(timezone.utc).strftime("%Y%m%d"),tuple(pred.game_id.astype(str))))
+        public_q,odds_diag=get_public_quotes(("espn-daily-v4",datetime.now(timezone.utc).strftime("%Y%m%d"),tuple(pred.game_id.astype(str))))
     st.subheader("Sportsbook odds connection")
     c1,c2,c3=st.columns(3)
     c1.metric("ESPN events found",odds_diag.get("events",0))
@@ -95,6 +95,10 @@ if not pred.empty:
         st.info("ESPN has betting odds entries, but none contain complete home-and-away moneylines in the fields currently checked. These may be spread or total markets.")
     elif odds_diag.get("offers_with_two_moneylines",0)>0 and odds_diag.get("matched_games",0)==0:
         st.info("Complete moneyline pairs exist, but they do not match CFVM games yet. See unmatched examples in technical diagnostics.")
+    if odds_diag.get("market_samples"):
+        st.markdown("**Sample ESPN markets (not moneyline opportunities)**")
+        st.dataframe(pd.DataFrame(odds_diag["market_samples"]),hide_index=True,use_container_width=True)
+        st.caption("Spreads and totals cannot be substituted for moneyline odds in expected-value calculations.")
     if not public_q.empty:
         st.success(f"Matched moneylines for {odds_diag['matched_games']} games.")
     else:
