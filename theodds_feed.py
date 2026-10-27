@@ -12,9 +12,10 @@ def fetch_odds(predictions,key):
     if not key:return pd.DataFrame(),status
     try:
         r=requests.get("https://api.theoddsapi.com/odds/",headers={"x-api-key":key},params={"sport_key":"americanfootball_ncaaf","markets":"h2h","oddsFormat":"american","regions":"us"},timeout=18)
+        status["http_status"]=r.status_code
         if r.status_code in (401,403,404):
-            status["status"]="access_restricted"
-            status["detail"]="NCAAF requires an eligible paid plan; check your provider account."
+            status["status"]={401:"authentication_failed",403:"access_denied",404:"endpoint_not_found"}[r.status_code]
+            status["detail"]="Check the key, subscription activation, and sport permissions. HTTP "+str(r.status_code)
             return pd.DataFrame(),status
         r.raise_for_status()
         payload=r.json()
