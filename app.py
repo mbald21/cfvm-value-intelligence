@@ -10,7 +10,7 @@ DATA=Path(__file__).parent/"data"
 DATA.mkdir(exist_ok=True)
 st.title("🏈 Better Betting with Baldwin")
 st.subheader("College Football Value Intelligence")
-st.info("CFVM v0.7 • Forecasts available from historical model • Live sportsbook odds NOT CONNECTED")
+st.info("CFVM v0.8 • Public odds feed enabled (availability varies)")
 st.caption("Private research prototype • independently modeled probabilities • not verified betting advice")
 st.warning("Research prototype: forecasts refresh when the app is visited after 24 hours; no background scheduler or durable cloud database. Historical profitability is unverified.")
 report_path=DATA/"model_report.json"
@@ -66,8 +66,24 @@ pred_path=DATA/"predictions.csv"
 pred=pd.read_csv(pred_path,dtype={"game_id":str}) if pred_path.exists() else pd.DataFrame()
 quotes_path=DATA/"quotes.csv"
 board=pd.DataFrame()
-if not pred.empty and quotes_path.exists():
-    q=pd.read_csv(quotes_path,dtype={"game_id":str})
+public_q=pd.DataFrame()
+if not pred.empty:
+    from odds_feed import fetch_public_odds
+    @st.cache_data(ttl=1800,show_spinner=False)
+    def get_public_quotes(games_key):
+        return fetch_public_odds(pred)
+    with st.spinner("Checking public college football moneylines..."):
+        public_q,odds_diag=get_public_quotes(tuple(pred.game_id.astype(str)))
+    with st.expander("Public odds feed status",expanded=True):
+        st.json(odds_diag)
+        st.caption("Unofficial ESPN source. Quote retrieval time is not necessarily the sportsbook price timestamp.")
+    if not public_q.empty:
+        st.success(f"Matched moneylines for {odds_diag['matched_games']} games.")
+    else:
+        st.warning("No matched public moneylines yet. Predictions remain available; no odds are invented.")
+if not pred.empty and (quotes_path.exists() or not public_q.empty):
+    q=pd.read_csv(quotes_path,dtype={"game_id":str}) if quotes_path.exists() else pd.DataFrame()
+    if not public_q.empty:q=pd.concat([q,public_q],ignore_index=True)
     if {"game_id","book","home_american","away_american","quote_utc"}.issubset(q.columns):
         q["quote_utc"]=pd.to_datetime(q["quote_utc"],utc=True,errors="coerce")
         q=q[q["quote_utc"].notna()].copy()
@@ -92,7 +108,7 @@ c.metric("Validated profitable strategies",0)
 st.subheader("Top 10 model-implied value opportunities")
 if board.empty:
     st.warning("No sportsbook comparisons available yet — this is NOT a prediction failure.")
-    st.write("Your game predictions are shown below. To rank betting value, CFVM still needs timestamped sportsbook moneylines. Live odds integration is the next step.")
+    st.write("Your game predictions are shown below. To rank betting value, CFVM still needs timestamped sportsbook moneylines. Check the Public odds feed status above for coverage, or upload a timestamped odds CSV.")
 else:
     st.dataframe(board.head(10),hide_index=True,use_container_width=True)
     st.caption("Illustrative expected return, not realized ROI. Check quote age, market availability, sportsbook limits and model calibration before acting.")
