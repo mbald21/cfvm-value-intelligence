@@ -10,7 +10,7 @@ DATA=Path(__file__).parent/"data"
 DATA.mkdir(exist_ok=True)
 st.title("🏈 Better Betting with Baldwin")
 st.subheader("College Football Value Intelligence")
-st.info("CFVM v3.1 • One game, one ranked opportunity")
+st.info("CFVM v3.2 • Plain-English research")
 st.caption("Private research prototype • independently modeled probabilities • not verified betting advice")
 st.warning("Research prototype: forecasts refresh when the app is visited after 24 hours; no background scheduler or durable cloud database. Historical profitability is unverified.")
 report_path=DATA/"model_report.json"
@@ -78,21 +78,7 @@ if provider_key and not pred.empty:
 else:
     provider_q=pd.DataFrame()
     provider_status={"status":"not_configured"}
-with st.expander("Live sportsbook connection · TheOddsAPI",expanded=False):
-    if st.button("Retry TheOddsAPI now",key="retry_paid_odds"):
-        st.cache_data.clear()
-        st.rerun()
-    if provider_status["status"]=="not_configured":
-        st.info("Add THEODDSAPI_KEY to Streamlit Secrets to connect. NCAAF requires an eligible provider plan.")
-    elif provider_status["status"] in ("access_restricted","access_denied","authentication_failed","endpoint_not_found"):
-        st.error(f"TheOddsAPI request failed: {provider_status.get('status')} (HTTP {provider_status.get('http_status','unknown')}). {provider_status.get('detail','')}")
-    elif provider_status["status"]=="ok":
-        st.success(f"Retrieved {provider_status['moneyline_quotes']} sportsbook quotes across {provider_status['matched_games']} games.")
-    else:
-        st.info(f"Provider status: {provider_status['status']}. {provider_status.get('detail','')}")
-    st.caption(f"Provider HTTP status: {provider_status.get('http_status','not requested')} • Events: {provider_status.get('events',0)} • Matched events: {provider_status.get('matched_events',0)} • Moneyline markets: {provider_status.get('moneyline_markets_seen',0)} • Quoted games: {provider_status.get('matched_games',0)}")
-    with st.expander("Provider data diagnostics",expanded=False):
-        st.json({k:v for k,v in provider_status.items() if k not in ("api_key","key")})
+technical_notes=[]
 board=pd.DataFrame()
 public_q=pd.DataFrame()  # Paid TheOddsAPI is the primary and only automatic odds source.
 if not pred.empty and (quotes_path.exists() or not public_q.empty or not provider_q.empty):
@@ -102,17 +88,15 @@ if not pred.empty and (quotes_path.exists() or not public_q.empty or not provide
         raw_quote_times=q["quote_utc"].astype(str).copy()
         q["quote_utc"]=pd.to_datetime(q["quote_utc"],utc=True,errors="coerce",format="mixed")
         invalid_times=int(q["quote_utc"].isna().sum())
-        st.caption(f"Raw sportsbook quotes: {len(q)} • Invalid quote timestamps: {invalid_times}")
+        technical_notes.append(f"Raw sportsbook quotes: {len(q)} • Invalid quote timestamps: {invalid_times}")
         if invalid_times:
-            with st.expander("Invalid timestamp samples"):
-                st.write(raw_quote_times[q["quote_utc"].isna()].head(5).tolist())
+            technical_notes.append(f"Invalid timestamp examples: {raw_quote_times[q['quote_utc'].isna()].head(5).tolist()}")
         q=q[q["quote_utc"].notna()].copy()
         joined=pred.merge(q,on="game_id",how="inner")
-        st.caption(f"Quote rows with valid timestamps: {len(q)} • Forecast-quote comparisons: {len(joined)}")
+        technical_notes.append(f"Quote rows with valid timestamps: {len(q)} • Forecast-quote comparisons: {len(joined)}")
         rows=[]
         skipped_prices=0
-        with st.expander("Raw moneyline price diagnostics"):
-            st.dataframe(joined[["home_team","away_team","book","home_american","away_american"]].head(12),hide_index=True,use_container_width=True)
+        raw_price_sample=joined[["home_team","away_team","book","home_american","away_american"]].head(12).copy()
         for _,g in joined.iterrows():
             for side in ("home","away"):
                 try:
@@ -131,7 +115,7 @@ if not pred.empty and (quotes_path.exists() or not public_q.empty or not provide
                     rows.append({"Game ID":str(g.game_id),"Game":f"{g.away_team} @ {g.home_team}","Pick":g.home_team if side=="home" else g.away_team,"Book":g["book"],"American odds":american,"Model probability":round(prob,4),"Estimated ROI":round(ev,4),"Quote time (UTC)":g["quote_utc"]})
                 except (ValueError,TypeError):continue
         board=pd.DataFrame(rows)
-        st.caption(f"Calculated betting sides: {len(board)} • Skipped invalid prices: {skipped_prices}")
+        technical_notes.append(f"Calculated betting sides: {len(board)} • Skipped invalid prices: {skipped_prices}")
         if joined.empty:
             st.error("No quote rows joined to forecasts. Check game IDs and timestamps.")
         elif board.empty:
@@ -206,8 +190,8 @@ else:
 <div class="edge">Estimated EV {r['Estimated EV %']:+.1f}%</div></div>""",unsafe_allow_html=True)
                 with st.expander("Why this pick? · Model and market"):
                     st.write(f"Model win probability: **{100*r['Model probability']:.1f}%**")
-                    st.write(f"Sportsbook implied probability (before removing vig): **{100*r['Market implied probability']:.1f}%**")
-                    st.write(f"Model minus implied probability: **{r['Edge (pp)']:+.1f} percentage points**")
+                    st.write(f"**What the sportsbook odds suggest:** {100*r['Market implied probability']:.1f}% chance. This is the win chance you can work backward from the posted betting price.")
+                    st.write(f"**Where they disagree:** Our model gives this team {r['Edge (pp)']:+.1f} percentage points more (or less) chance than the sportsbook price suggests.")
                     st.write(f"Estimated return per $100 staked: **${100*r['Estimated ROI']:+.2f}** (expectation, not guaranteed)")
                     away,home=r["Game"].split(" @ ",1)
                     detail=detail_index.get((away,home))
@@ -215,7 +199,7 @@ else:
                         if pd.notna(detail.elo_diff):
                             st.write(f"Pre-game Elo strength difference (home minus away): **{detail.elo_diff:+.0f}**")
                         st.write("Venue adjustment: **Home-field advantage**" if detail.home_field==1 else "Venue adjustment: **Neutral site**")
-                    st.caption("Current baseline inputs: historical game results, pre-game Elo difference, and home-field indicator. Injuries, weather, rosters and player availability are not modeled.")
+                    st.info("**In everyday terms:** Our model uses past game results to rate how strong each team is (Elo), adjusts for playing at home, and estimates who is more likely to win. The sportsbook sets a price. We look for times our model thinks the team has a better chance than that price suggests. **Vig** is the sportsbook’s built-in margin, similar to a service fee; the displayed price already includes it. We do not currently account for injuries, weather, rosters or player availability.")
                     alternatives=board[board["Game"]==r["Game"]].sort_values("Estimated ROI",ascending=False).head(8)
                     st.dataframe(alternatives[["Pick","Book","American odds","Model probability","Estimated EV %"]],hide_index=True,use_container_width=True)
 st.markdown("## All upcoming games")
@@ -247,4 +231,26 @@ else:
             st.success("Saved locally. Notes may be lost when this cloud instance restarts.")
         conn.close()
 st.divider()
-st.caption("CFVM v0.4 starter — baseline forecasts, not the previously reported v0.3 model. No historical executable ROI has been established.")
+st.markdown("## Data sources & technical details")
+with st.expander("Sportsbook connection and API diagnostics",expanded=False):
+    with st.expander("Live sportsbook connection · TheOddsAPI",expanded=False):
+        if st.button("Retry TheOddsAPI now",key="retry_paid_odds"):
+            st.cache_data.clear()
+            st.rerun()
+        if provider_status["status"]=="not_configured":
+            st.info("Add THEODDSAPI_KEY to Streamlit Secrets to connect. NCAAF requires an eligible provider plan.")
+        elif provider_status["status"] in ("access_restricted","access_denied","authentication_failed","endpoint_not_found"):
+            st.error(f"TheOddsAPI request failed: {provider_status.get('status')} (HTTP {provider_status.get('http_status','unknown')}). {provider_status.get('detail','')}")
+        elif provider_status["status"]=="ok":
+            st.success(f"Retrieved {provider_status['moneyline_quotes']} sportsbook quotes across {provider_status['matched_games']} games.")
+        else:
+            st.info(f"Provider status: {provider_status['status']}. {provider_status.get('detail','')}")
+        st.caption(f"Provider HTTP status: {provider_status.get('http_status','not requested')} • Events: {provider_status.get('events',0)} • Matched events: {provider_status.get('matched_events',0)} • Moneyline markets: {provider_status.get('moneyline_markets_seen',0)} • Quoted games: {provider_status.get('matched_games',0)}")
+        with st.expander("Provider data diagnostics",expanded=False):
+            st.json({k:v for k,v in provider_status.items() if k not in ("api_key","key")})
+with st.expander("Calculation and quote diagnostics",expanded=False):
+    for note in technical_notes:
+        st.caption(note)
+    if "raw_price_sample" in locals():
+        st.dataframe(raw_price_sample,hide_index=True,use_container_width=True)
+st.caption("CFVM v0.4 Elo/logistic baseline; no historical executable ROI has been established.")
