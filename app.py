@@ -8,6 +8,7 @@ st.set_page_config(page_title="CFVM | Value Intelligence", page_icon="🏈", lay
 DATA=Path(__file__).parent/"data"
 DATA.mkdir(exist_ok=True)
 st.title("🏈 CFVM | Value Intelligence")
+st.caption("Dashboard build: v0.5 — October 27, 2026")
 st.caption("Private research prototype • independently modeled probabilities • not verified betting advice")
 st.warning("Initial prototype: no automated refresh or durable cloud database yet. Historical profitability is unverified.")
 with st.sidebar:
@@ -25,6 +26,10 @@ with st.sidebar:
                     st.success(f"Trained on {report['train_games']:,} completed games.")
                     st.rerun()
             except Exception as exc: st.error(f"Training failed: {exc}")
+    log_path=DATA/"download_log.json"
+    if log_path.exists():
+        with st.expander("Download diagnostics — latest run"):
+            st.dataframe(pd.DataFrame(json.loads(log_path.read_text())),hide_index=True,use_container_width=True)
     report_path=DATA/"model_report.json"
     if report_path.exists():
         st.json(json.loads(report_path.read_text()))
@@ -70,8 +75,17 @@ else:
     st.dataframe(board.head(10),hide_index=True,use_container_width=True)
     st.caption("Illustrative model EV only. Verify sportsbook availability, timestamp, and accuracy.")
 st.subheader("Game explorer")
-if pred.empty:st.info("Predictions will appear here after historical schedules are downloaded and the baseline is trained.")
+if pred.empty:
+    st.warning("No upcoming forecasts were generated. This is a schedule/data issue, not proof that there are no upcoming games.")
+    st.info("Open Download diagnostics in the sidebar. Check the 2026 row for downloaded status, number of rows, or an error. Then send that row to me.")
 else:
+    pred["game_date"]=pd.to_datetime(pred["game_date"],utc=True,errors="coerce")
+    pred=pred.sort_values("game_date")
+    st.subheader("Next scheduled games")
+    preview=pred.head(20).copy()
+    preview["Home win %"]=(preview["home_win_probability"]*100).round(1)
+    preview["Away win %"]=(100-preview["Home win %"]).round(1)
+    st.dataframe(preview[["game_date","away_team","home_team","Away win %","Home win %"]],hide_index=True,use_container_width=True)
     search=st.text_input("Search a team")
     matches=pred[pred.home_team.str.contains(search,case=False,na=False)|pred.away_team.str.contains(search,case=False,na=False)] if search else pred
     st.dataframe(matches,hide_index=True,use_container_width=True)
