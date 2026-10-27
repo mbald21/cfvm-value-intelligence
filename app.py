@@ -10,7 +10,7 @@ DATA=Path(__file__).parent/"data"
 DATA.mkdir(exist_ok=True)
 st.title("🏈 Better Betting with Baldwin")
 st.subheader("College Football Value Intelligence")
-st.info("CFVM v1.8 • Visible sportsbook comparisons")
+st.info("CFVM v1.9 • Timestamp parsing repair")
 st.caption("Private research prototype • independently modeled probabilities • not verified betting advice")
 st.warning("Research prototype: forecasts refresh when the app is visited after 24 hours; no background scheduler or durable cloud database. Historical profitability is unverified.")
 report_path=DATA/"model_report.json"
@@ -141,7 +141,13 @@ if not pred.empty and (quotes_path.exists() or not public_q.empty or not provide
     if not public_q.empty:q=pd.concat([q,public_q],ignore_index=True)
     if not provider_q.empty:q=pd.concat([q,provider_q],ignore_index=True)
     if {"game_id","book","home_american","away_american","quote_utc"}.issubset(q.columns):
-        q["quote_utc"]=pd.to_datetime(q["quote_utc"],utc=True,errors="coerce")
+        raw_quote_times=q["quote_utc"].astype(str).copy()
+        q["quote_utc"]=pd.to_datetime(q["quote_utc"],utc=True,errors="coerce",format="mixed")
+        invalid_times=int(q["quote_utc"].isna().sum())
+        st.caption(f"Raw sportsbook quotes: {len(q)} • Invalid quote timestamps: {invalid_times}")
+        if invalid_times:
+            with st.expander("Invalid timestamp samples"):
+                st.write(raw_quote_times[q["quote_utc"].isna()].head(5).tolist())
         q=q[q["quote_utc"].notna()].copy()
         joined=pred.merge(q,on="game_id",how="inner")
         st.caption(f"Quote rows with valid timestamps: {len(q)} • Forecast-quote comparisons: {len(joined)}")
@@ -160,7 +166,7 @@ if not pred.empty and (quotes_path.exists() or not public_q.empty or not provide
         if joined.empty:
             st.error("No quote rows joined to forecasts. Check game IDs and timestamps.")
         elif board.empty:
-            st.warning("Quotes joined, but no positive-EV opportunities passed validation. Inspect odds formats and probability values.")
+            st.warning("Quotes joined, but no valid comparison rows passed validation. Inspect odds formats and probability values.")
             with st.expander("Comparison diagnostics"):
                 st.dataframe(joined[["away_team","home_team","book","home_american","away_american","home_win_probability"]].head(15),hide_index=True,use_container_width=True)
         if not board.empty:board=board.sort_values("Estimated ROI",ascending=False)
