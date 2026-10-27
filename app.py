@@ -10,7 +10,7 @@ DATA=Path(__file__).parent/"data"
 DATA.mkdir(exist_ok=True)
 st.title("🏈 Better Betting with Baldwin")
 st.subheader("College Football Value Intelligence")
-st.info("CFVM v0.8 • Public odds feed enabled (availability varies)")
+st.info("CFVM v0.9 • ESPN odds coverage and matching diagnostics")
 st.caption("Private research prototype • independently modeled probabilities • not verified betting advice")
 st.warning("Research prototype: forecasts refresh when the app is visited after 24 hours; no background scheduler or durable cloud database. Historical profitability is unverified.")
 report_path=DATA/"model_report.json"
@@ -50,8 +50,8 @@ with st.sidebar:
     if report_path.exists():
         st.json(json.loads(report_path.read_text()))
     st.divider()
-    st.caption("Upload timestamped, independently sourced moneylines. This app does not yet fetch live sportsbook prices.")
-    st.download_button("Download odds CSV template",data="game_id,book,home_american,away_american,quote_utc\\n",file_name="cfvm_moneyline_template.csv",mime="text/csv")
+    st.caption("Optional manual odds upload. Public ESPN odds are also checked automatically, but availability is not guaranteed.")
+    st.download_button("Download odds CSV template",data="game_id,book,home_american,away_american,quote_utc\n",file_name="cfvm_moneyline_template.csv",mime="text/csv")
     upload=st.file_uploader("Moneyline quotes CSV",type="csv")
     if upload:
         try:
@@ -74,9 +74,20 @@ if not pred.empty:
         return fetch_public_odds(pred)
     with st.spinner("Checking public college football moneylines..."):
         public_q,odds_diag=get_public_quotes(tuple(pred.game_id.astype(str)))
-    with st.expander("Public odds feed status",expanded=True):
+    st.subheader("Sportsbook odds connection")
+    c1,c2,c3=st.columns(3)
+    c1.metric("ESPN events found",odds_diag.get("events",0))
+    c2.metric("Events with odds entries",odds_diag.get("priced_events",0))
+    c3.metric("Matched moneyline games",odds_diag.get("matched_games",0))
+    if odds_diag.get("status")=="source_error":
+        st.error("ESPN request failed; open technical details below.")
+    elif not odds_diag.get("priced_events"):
+        st.info("ESPN returned no odds entries in the checked schedule window. No betting prices can be displayed from this feed.")
+    elif not odds_diag.get("matched_games"):
+        st.info("ESPN returned odds entries, but no complete home/away moneyline pair could be linked to a CFVM forecast.")
+    with st.expander("Technical feed diagnostics (optional)",expanded=False):
         st.json(odds_diag)
-        st.caption("Unofficial ESPN source. Quote retrieval time is not necessarily the sportsbook price timestamp.")
+        st.caption("Unofficial ESPN source. Retrieval time is not necessarily the sportsbook quote time.")
     if not public_q.empty:
         st.success(f"Matched moneylines for {odds_diag['matched_games']} games.")
     else:
