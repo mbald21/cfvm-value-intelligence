@@ -10,7 +10,7 @@ DATA=Path(__file__).parent/"data"
 DATA.mkdir(exist_ok=True)
 st.title("🏈 Better Betting with Baldwin")
 st.subheader("College Football Value Intelligence")
-st.info("CFVM v3.2 • Plain-English research")
+st.info("CFVM v3.3 • Model Competition Lab")
 st.caption("Private research prototype • independently modeled probabilities • not verified betting advice")
 st.warning("Research prototype: forecasts refresh when the app is visited after 24 hours; no background scheduler or durable cloud database. Historical profitability is unverified.")
 report_path=DATA/"model_report.json"
@@ -231,6 +231,38 @@ else:
             st.success("Saved locally. Notes may be lost when this cloud instance restarts.")
         conn.close()
 st.divider()
+st.markdown("## Model Competition Lab")
+st.caption("Which forecasting method has actually performed best on seasons it had never seen? This comparison tests historical predictions, not betting profits.")
+competition_path=DATA/"model_competition.json"
+if st.button("Run model competition on historical games",key="run_competition"):
+    from model_competition import evaluate
+    with st.spinner("Training and testing competing models across past seasons..."):
+        try:
+            competition=evaluate()
+            if competition.get("status")!="ok":st.warning(f"Comparison unavailable: {competition}")
+            else:st.success("Historical model comparison completed.")
+        except Exception as exc:st.error(f"Model comparison failed: {exc}")
+if competition_path.exists():
+    try:
+        competition=json.loads(competition_path.read_text())
+        if competition.get("status")=="ok":
+            st.success(f"Best historical probability accuracy (lowest Brier score): {competition['winner_by_brier']}")
+            leaderboard=pd.DataFrame(competition["leaderboard"]).rename(columns={"Win pick accuracy":"Winner accuracy","Brier score":"Probability error","Log loss":"Confidence penalty"})
+            leaderboard["Winner accuracy"]=(leaderboard["Winner accuracy"]*100).round(1).astype(str)+"%"
+            st.dataframe(leaderboard,hide_index=True,use_container_width=True)
+            st.info("**How to read this:** Winner accuracy is how often the model picked the winner. Probability error (Brier score) checks how realistic its confidence was; **lower is better**. Confidence penalty (log loss) punishes confident wrong predictions; **lower is better**. The top model here is not automatically the best model for making money.")
+            with st.expander("Method, year-by-year results and limitations"):
+                st.write(competition["method"])
+                st.write(competition["limitations"])
+                year_rows=pd.DataFrame(competition["season_results"])
+                year_rows["Winner accuracy"]=(100*year_rows["Correct"]/year_rows["Games"]).round(1)
+                year_rows["Brier score"]=(year_rows["Brier total"]/year_rows["Games"]).round(4)
+                st.dataframe(year_rows[["Season","Model","Games","Winner accuracy","Brier score"]],hide_index=True,use_container_width=True)
+    except Exception as exc:
+        st.warning(f"Could not display model comparison: {exc}")
+else:
+    st.info("Run the comparison to see which approach predicts unseen historical games most accurately. Current live picks remain on the existing Elo/logistic baseline until a new model is independently validated.")
+st.caption("Competition uses the existing Elo and venue data. Adding opponent-adjusted efficiency, EPA, roster and injury data requires a separate verified data pipeline.")
 st.markdown("## Data sources & technical details")
 with st.expander("Sportsbook connection and API diagnostics",expanded=False):
     with st.expander("Live sportsbook connection · TheOddsAPI",expanded=False):
