@@ -61,6 +61,12 @@ def evaluate():
                 enhanced.fit(tr_adv[FEATURES+advanced_cols],tr_adv.won)
                 p=np.clip(enhanced.predict_proba(te_adv[FEATURES+advanced_cols])[:,1],.001,.999)
                 rows.append({"Season":int(season),"Model":"EPA + success + Elo (experimental)","Games":len(te_adv),"Correct":int(accuracy_score(te_adv.won,p>=.5)*len(te_adv)),"Brier total":float(np.square(p-te_adv.won.to_numpy()).sum()),"Log loss total":float(log_loss(te_adv.won,p,labels=[0,1])*len(te_adv))})
+                # Matched-sample baseline: score the original models on exactly these games.
+                mask=test.index.isin(te_adv.index)
+                for base_name,base_probs in forecasts.items():
+                    subset=base_probs[mask]
+                    actual=te_adv.won.to_numpy()
+                    rows.append({"Season":int(season),"Model":base_name+" (same EPA games)","Games":len(te_adv),"Correct":int(accuracy_score(actual,subset>=.5)*len(te_adv)),"Brier total":float(np.square(subset-actual).sum()),"Log loss total":float(log_loss(actual,subset,labels=[0,1])*len(te_adv))})
         for name,probs in forecasts.items():
             rows.append({"Season":int(season),"Model":name,"Games":len(test),"Correct":int(accuracy_score(yte,probs>=.5)*len(test)),"Brier total":float(np.square(probs-yte.to_numpy()).sum()),"Log loss total":float(log_loss(yte,probs,labels=[0,1])*len(test))})
     if not rows:return {"status":"no_test_seasons"}
@@ -70,7 +76,7 @@ def evaluate():
         games=int(group.Games.sum())
         summary.append({"Model":name,"Test games":games,"Win pick accuracy":round(group.Correct.sum()/games,4),"Brier score":round(group["Brier total"].sum()/games,4),"Log loss":round(group["Log loss total"].sum()/games,4)})
     summary=sorted(summary,key=lambda r:r["Brier score"])
-    result={"status":"ok","features":FEATURES,"method":"Train on all seasons before each test year (2018-2025); never train on the tested year.","winner_by_brier":summary[0]["Model"],"leaderboard":summary,"season_results":rows,"limitations":"Baseline uses Elo and venue. Optional experimental model uses pregame EPA and success-rate averages, if uploaded. Different coverage means scores are not strictly comparable. No verified betting ROI."}
+    result={"status":"ok","features":FEATURES,"method":"Train on all seasons before each test year (2018-2025); never train on the tested year.","winner_by_brier":min((r for r in summary if "same EPA games" not in r["Model"] and "experimental" not in r["Model"]),key=lambda r:r["Brier score"])["Model"],"leaderboard":summary,"season_results":rows,"limitations":"Baseline uses Elo and venue. Optional experimental model uses pregame EPA and success-rate averages, if uploaded. Different coverage means scores are not strictly comparable. No verified betting ROI."}
     (DATA/"model_competition.json").write_text(json.dumps(result,indent=2))
     return result
 
