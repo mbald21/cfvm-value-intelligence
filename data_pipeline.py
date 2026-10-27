@@ -39,14 +39,19 @@ def download(start=2015,end=2026):
 def load():
     fs=[]
     for p in sorted(DATA.glob("cfb_schedule_*.csv")):
-        try:fs.append(pd.read_csv(p))
+        try:
+            frame=pd.read_csv(p,dtype={"game_id":str})
+            if p.stem=="cfb_schedule_2026":frame["season"]=2026
+            fs.append(frame)
         except Exception:pass
     if not fs:return pd.DataFrame()
     d=pd.concat(fs,ignore_index=True)
     d["game_date"]=pd.to_datetime(d["game_date"],utc=True,errors="coerce")
     d["season"]=pd.to_numeric(d["season"],errors="coerce")
     for c in ("home_score","away_score"):d[c]=pd.to_numeric(d.get(c),errors="coerce")
-    return d.dropna(subset=["game_id","game_date","home_team","away_team"]).sort_values("game_date").drop_duplicates("game_id",keep="last")
+    d=d.dropna(subset=["game_id","game_date","home_team","away_team"])
+    d=d.sort_values(["game_date","season"]).drop_duplicates(["game_id","season"],keep="last")
+    return d
 def features(d):
     elo={};last_year=None;rows=[]
     for day,games in d.groupby(d.game_date.dt.date,sort=True):
@@ -60,7 +65,7 @@ def features(d):
             neutral=str(g.get("neutral_site","")).lower() in ("true","1","yes")
             prob=1/(1+10**(-(h+(0 if neutral else 55)-a)/400))
             complete=pd.notna(g.home_score) and pd.notna(g.away_score)
-            rows.append({"game_id":str(g.game_id),"game_date":g.game_date.isoformat(),"season":year,"home_team":home,"away_team":away,"home_score":g.home_score,"away_score":g.away_score,"elo_diff":h-a,"home_field":int(not neutral),"completed":bool(complete)})
+            rows.append({"game_id":str(g.game_id),"game_date":g.game_date.isoformat(),"season":int(g.season) if pd.notna(g.season) else year,"home_team":home,"away_team":away,"home_score":g.home_score,"away_score":g.away_score,"elo_diff":h-a,"home_field":int(not neutral),"completed":bool(complete)})
             if complete:
                 result=1 if g.home_score>g.away_score else (0 if g.home_score<g.away_score else .5)
                 changes.append((home,away,20*(result-prob)))
@@ -69,6 +74,7 @@ def features(d):
     return pd.DataFrame(rows)
 def train():
     d=load()
+    source_files={p.name:{"bytes":p.stat().st_size} for p in DATA.glob("cfb_schedule_*.csv")}
     if d.empty:raise RuntimeError("No data. Run: python data_pipeline.py download")
     f=features(d);f.to_csv(DATA/"features.csv",index=False)
     hist=f[f.completed & f.season.between(2015,2025) & (f.home_score!=f.away_score)].copy()
@@ -83,7 +89,7 @@ def train():
         tests.append({"season":year,"games":len(te),"brier":float(brier_score_loss(te.label,pred)),"accuracy":float(accuracy_score(te.label,pred>=.5))})
     model=LogisticRegression(max_iter=1000).fit(hist[["elo_diff","home_field"]],hist.label)
     future_dates=pd.to_datetime(f.game_date,utc=True,errors="coerce")>pd.Timestamp.now(tz="UTC")
-    diagnostics={"source_2026_rows":int((d.season==2026).sum()),"features_2026_rows":int((f.season==2026).sum()),"uncompleted_2026_rows":int(((~f.completed)&(f.season==2026)).sum()),"future_dated_2026_rows":int((future_dates&(f.season==2026)).sum()),"future_uncompleted_2026_rows":int((future_dates&(~f.completed)&(f.season==2026)).sum()),"latest_2026_dates":f.loc[f.season==2026,"game_date"].tail(5).tolist(),"current_utc":pd.Timestamp.now(tz="UTC").isoformat()}
+    diagnostics={"source_2026_rows":int((d.season==2026).sum()),"source_files":source_files,"features_2026_rows":int((f.season==2026).sum()),"uncompleted_2026_rows":int(((~f.completed)&(f.season==2026)).sum()),"future_dated_2026_rows":int((future_dates&(f.season==2026)).sum()),"future_uncompleted_2026_rows":int((future_dates&(~f.completed)&(f.season==2026)).sum()),"latest_2026_dates":f.loc[f.season==2026,"game_date"].tail(5).tolist(),"current_utc":pd.Timestamp.now(tz="UTC").isoformat()}
     upcoming=f[(~f.completed)&(f.season>=2026)&future_dates].copy()
     if len(upcoming):upcoming["home_win_probability"]=model.predict_proba(upcoming[["elo_diff","home_field"]])[:,1]
     else:upcoming["home_win_probability"]=pd.Series(dtype=float)
