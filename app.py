@@ -103,7 +103,7 @@ if not pred.empty:
     m1.metric("Spread offers",odds_diag.get("offers_with_spread",0))
     m2.metric("Total offers",odds_diag.get("offers_with_total",0))
     m3.metric("Complete moneyline offers",odds_diag.get("offers_with_two_moneylines",0))
-        st.caption("Spreads and totals cannot be substituted for moneyline odds in expected-value calculations.")
+    st.caption("Spreads and totals cannot be substituted for moneyline odds in expected-value calculations.")
     if not public_q.empty:
         st.success(f"Matched moneylines for {odds_diag['matched_games']} games.")
     else:
