@@ -10,7 +10,7 @@ DATA=Path(__file__).parent/"data"
 DATA.mkdir(exist_ok=True)
 st.title("🏈 Better Betting with Baldwin")
 st.subheader("College Football Value Intelligence")
-st.info("CFVM v1.2 • ESPN spread and total market visibility")
+st.info("CFVM v1.3 • Moneyline format checks and market coverage")
 st.caption("Private research prototype • independently modeled probabilities • not verified betting advice")
 st.warning("Research prototype: forecasts refresh when the app is visited after 24 hours; no background scheduler or durable cloud database. Historical profitability is unverified.")
 report_path=DATA/"model_report.json"
@@ -76,7 +76,7 @@ if not pred.empty:
     def get_public_quotes(games_key):
         return fetch_public_odds(pred)
     with st.spinner("Checking public college football moneylines..."):
-        public_q,odds_diag=get_public_quotes(("espn-daily-v4",datetime.now(timezone.utc).strftime("%Y%m%d"),tuple(pred.game_id.astype(str))))
+        public_q,odds_diag=get_public_quotes(("espn-daily-v5",datetime.now(timezone.utc).strftime("%Y%m%d"),tuple(pred.game_id.astype(str))))
     st.subheader("Sportsbook odds connection")
     c1,c2,c3=st.columns(3)
     c1.metric("ESPN events found",odds_diag.get("events",0))
@@ -97,7 +97,12 @@ if not pred.empty:
         st.info("Complete moneyline pairs exist, but they do not match CFVM games yet. See unmatched examples in technical diagnostics.")
     if odds_diag.get("market_samples"):
         st.markdown("**Sample ESPN markets (not moneyline opportunities)**")
-        st.dataframe(pd.DataFrame(odds_diag["market_samples"]),hide_index=True,use_container_width=True)
+        samples=pd.DataFrame(odds_diag["market_samples"])
+        st.dataframe(samples,hide_index=True,use_container_width=True)
+    m1,m2,m3=st.columns(3)
+    m1.metric("Spread offers",odds_diag.get("offers_with_spread",0))
+    m2.metric("Total offers",odds_diag.get("offers_with_total",0))
+    m3.metric("Complete moneyline offers",odds_diag.get("offers_with_two_moneylines",0))
         st.caption("Spreads and totals cannot be substituted for moneyline odds in expected-value calculations.")
     if not public_q.empty:
         st.success(f"Matched moneylines for {odds_diag['matched_games']} games.")
@@ -130,7 +135,7 @@ c.metric("Validated profitable strategies",0)
 st.subheader("Top 10 model-implied value opportunities")
 if board.empty:
     st.warning("No sportsbook comparisons available yet — this is NOT a prediction failure.")
-    st.write("Your game predictions are shown below. To rank betting value, CFVM still needs timestamped sportsbook moneylines. Check the Public odds feed status above for coverage, or upload a timestamped odds CSV.")
+    st.write("Forecasts are available below. ESPN may offer only spreads/totals for these games. A valid moneyline leaderboard requires actual two-sided moneyline prices, not inferred odds.")
 else:
     st.dataframe(board.head(10),hide_index=True,use_container_width=True)
     st.caption("Illustrative expected return, not realized ROI. Check quote age, market availability, sportsbook limits and model calibration before acting.")
