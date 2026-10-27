@@ -76,7 +76,7 @@ if not pred.empty:
     def get_public_quotes(games_key):
         return fetch_public_odds(pred)
     with st.spinner("Checking public college football moneylines..."):
-        public_q,odds_diag=get_public_quotes(("espn-daily-v2",datetime.now(timezone.utc).strftime("%Y%m%d"),tuple(pred.game_id.astype(str)))
+        public_q,odds_diag=get_public_quotes(("espn-daily-v2",datetime.now(timezone.utc).strftime("%Y%m%d"),tuple(pred.game_id.astype(str))))
     st.subheader("Sportsbook odds connection")
     c1,c2,c3=st.columns(3)
     c1.metric("ESPN events found",odds_diag.get("events",0))
