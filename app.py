@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone, timedelta
 import sqlite3
 from pathlib import Path
 import pandas as pd
@@ -8,9 +9,23 @@ st.set_page_config(page_title="CFVM | Value Intelligence", page_icon="🏈", lay
 DATA=Path(__file__).parent/"data"
 DATA.mkdir(exist_ok=True)
 st.title("🏈 CFVM | Value Intelligence")
-st.caption("Dashboard build: v0.5 — October 27, 2026")
+st.caption("Dashboard build: v0.6 — schedule refresh + value leaderboard")
 st.caption("Private research prototype • independently modeled probabilities • not verified betting advice")
-st.warning("Initial prototype: no automated refresh or durable cloud database yet. Historical profitability is unverified.")
+st.warning("Research prototype: forecasts refresh when the app is visited after 24 hours; no background scheduler or durable cloud database. Historical profitability is unverified.")
+report_path=DATA/"model_report.json"
+try:
+    previous=json.loads(report_path.read_text()) if report_path.exists() else {}
+    last=datetime.fromisoformat(previous.get("generated_utc","2000-01-01T00:00:00+00:00"))
+    if last.tzinfo is None:last=last.replace(tzinfo=timezone.utc)
+    if datetime.now(timezone.utc)-last>timedelta(hours=24):
+        from data_pipeline import download,train
+        with st.spinner("Refreshing schedule and forecasts (runs on visits after 24 hours)..."):
+            logs=download()
+            failures=[x for x in logs if x["status"]=="error"]
+            if failures:st.warning("Automatic refresh skipped: source errors for "+", ".join(str(x["year"]) for x in failures))
+            else:train()
+except Exception as exc:
+    st.warning(f"Automatic refresh unavailable: {exc}. Manual refresh remains available.")
 with st.sidebar:
     st.header("Model controls")
     st.caption("This starter does not contain the original CFVM v0.3 trained model.")
@@ -34,14 +49,16 @@ with st.sidebar:
     if report_path.exists():
         st.json(json.loads(report_path.read_text()))
     st.divider()
-    upload=st.file_uploader("Optional moneyline quotes CSV",type="csv")
+    st.caption("Upload timestamped, independently sourced moneylines. This app does not yet fetch live sportsbook prices.")
+    st.download_button("Download odds CSV template",data="game_id,book,home_american,away_american,quote_utc\\n",file_name="cfvm_moneyline_template.csv",mime="text/csv")
+    upload=st.file_uploader("Moneyline quotes CSV",type="csv")
     if upload:
         try:
             q=pd.read_csv(upload,dtype={"game_id":str})
-            if {"game_id","book","home_american","away_american"}.issubset(q.columns):
+            if {"game_id","book","home_american","away_american","quote_utc"}.issubset(q.columns):
                 q.to_csv(DATA/"quotes.csv",index=False)
                 st.success("Quotes saved on this app instance.")
-            else:st.error("Required columns: game_id,book,home_american,away_american")
+            else:st.error("Required columns: game_id,book,home_american,away_american,quote_utc")
         except Exception as exc:st.error(str(exc))
 
 pred_path=DATA/"predictions.csv"
@@ -50,7 +67,9 @@ quotes_path=DATA/"quotes.csv"
 board=pd.DataFrame()
 if not pred.empty and quotes_path.exists():
     q=pd.read_csv(quotes_path,dtype={"game_id":str})
-    if {"game_id","book","home_american","away_american"}.issubset(q.columns):
+    if {"game_id","book","home_american","away_american","quote_utc"}.issubset(q.columns):
+        q["quote_utc"]=pd.to_datetime(q["quote_utc"],utc=True,errors="coerce")
+        q=q[q["quote_utc"].notna()].copy()
         joined=pred.merge(q,on="game_id",how="inner")
         rows=[]
         for _,g in joined.iterrows():
@@ -61,7 +80,7 @@ if not pred.empty and quotes_path.exists():
                     decimal=1+odds/100 if odds>0 else 1+100/abs(odds)
                     prob=float(g.home_win_probability) if side=="home" else 1-float(g.home_win_probability)
                     ev=prob*decimal-1
-                    if ev>0:rows.append({"Game":f"{g.away_team} @ {g.home_team}","Pick":g.home_team if side=="home" else g.away_team,"Book":g["book"],"American odds":odds,"Model probability":round(prob,4),"Estimated ROI":round(ev,4)})
+                    if ev>0:rows.append({"Game":f"{g.away_team} @ {g.home_team}","Pick":g.home_team if side=="home" else g.away_team,"Book":g["book"],"American odds":odds,"Model probability":round(prob,4),"Estimated ROI":round(ev,4),"Quote time (UTC)":g["quote_utc"]})
                 except (ValueError,TypeError):continue
         board=pd.DataFrame(rows)
         if not board.empty:board=board.sort_values("Estimated ROI",ascending=False)
@@ -69,11 +88,11 @@ a,b,c=st.columns(3)
 a.metric("Predicted games",len(pred))
 b.metric("Positive-EV hypotheses",len(board))
 c.metric("Validated profitable strategies",0)
-st.subheader("Top 10 pricing discrepancies")
+st.subheader("Top 10 model-implied value opportunities")
 if board.empty:st.info("No comparisons yet. Train the baseline and import independently sourced sportsbook quotes.")
 else:
     st.dataframe(board.head(10),hide_index=True,use_container_width=True)
-    st.caption("Illustrative model EV only. Verify sportsbook availability, timestamp, and accuracy.")
+    st.caption("Illustrative expected return, not realized ROI. Check quote age, market availability, sportsbook limits and model calibration before acting.")
 st.subheader("Game explorer")
 if pred.empty:
     st.warning("No upcoming forecasts were generated. This is a schedule/data issue, not proof that there are no upcoming games.")
