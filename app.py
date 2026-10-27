@@ -10,7 +10,7 @@ DATA=Path(__file__).parent/"data"
 DATA.mkdir(exist_ok=True)
 st.title("🏈 Better Betting with Baldwin")
 st.subheader("College Football Value Intelligence")
-st.info("CFVM v0.9 • ESPN odds coverage and matching diagnostics")
+st.info("CFVM v1.0 • Odds feed cache reset and refresh controls")
 st.caption("Private research prototype • independently modeled probabilities • not verified betting advice")
 st.warning("Research prototype: forecasts refresh when the app is visited after 24 hours; no background scheduler or durable cloud database. Historical profitability is unverified.")
 report_path=DATA/"model_report.json"
@@ -69,11 +69,14 @@ board=pd.DataFrame()
 public_q=pd.DataFrame()
 if not pred.empty:
     from odds_feed import fetch_public_odds
-    @st.cache_data(ttl=1800,show_spinner=False)
+    if st.button("🔄 Check ESPN odds now",key="refresh_espn_odds"):
+        st.cache_data.clear()
+        st.rerun()
+    @st.cache_data(ttl=300,show_spinner=False)
     def get_public_quotes(games_key):
         return fetch_public_odds(pred)
     with st.spinner("Checking public college football moneylines..."):
-        public_q,odds_diag=get_public_quotes(tuple(pred.game_id.astype(str)))
+        public_q,odds_diag=get_public_quotes(("espn-daily-v2",datetime.now(timezone.utc).strftime("%Y%m%d"),tuple(pred.game_id.astype(str)))
     st.subheader("Sportsbook odds connection")
     c1,c2,c3=st.columns(3)
     c1.metric("ESPN events found",odds_diag.get("events",0))
@@ -91,7 +94,7 @@ if not pred.empty:
     if not public_q.empty:
         st.success(f"Matched moneylines for {odds_diag['matched_games']} games.")
     else:
-        st.warning("No matched public moneylines yet. Predictions remain available; no odds are invented.")
+        st.warning("No matched public moneylines yet. Check the event and odds counts above. Predictions remain available.")
 if not pred.empty and (quotes_path.exists() or not public_q.empty):
     q=pd.read_csv(quotes_path,dtype={"game_id":str}) if quotes_path.exists() else pd.DataFrame()
     if not public_q.empty:q=pd.concat([q,public_q],ignore_index=True)
