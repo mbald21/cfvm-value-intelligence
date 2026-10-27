@@ -10,7 +10,7 @@ DATA=Path(__file__).parent/"data"
 DATA.mkdir(exist_ok=True)
 st.title("🏈 Better Betting with Baldwin")
 st.subheader("College Football Value Intelligence")
-st.info("CFVM v3.0 • Intelligence dashboard")
+st.info("CFVM v3.1 • One game, one ranked opportunity")
 st.caption("Private research prototype • independently modeled probabilities • not verified betting advice")
 st.warning("Research prototype: forecasts refresh when the app is visited after 24 hours; no background scheduler or durable cloud database. Historical profitability is unverified.")
 report_path=DATA/"model_report.json"
@@ -128,7 +128,7 @@ if not pred.empty and (quotes_path.exists() or not public_q.empty or not provide
                         continue
                     prob=float(g.home_win_probability) if side=="home" else 1-float(g.home_win_probability)
                     ev=prob*decimal-1
-                    rows.append({"Game":f"{g.away_team} @ {g.home_team}","Pick":g.home_team if side=="home" else g.away_team,"Book":g["book"],"American odds":american,"Model probability":round(prob,4),"Estimated ROI":round(ev,4),"Quote time (UTC)":g["quote_utc"]})
+                    rows.append({"Game ID":str(g.game_id),"Game":f"{g.away_team} @ {g.home_team}","Pick":g.home_team if side=="home" else g.away_team,"Book":g["book"],"American odds":american,"Model probability":round(prob,4),"Estimated ROI":round(ev,4),"Quote time (UTC)":g["quote_utc"]})
                 except (ValueError,TypeError):continue
         board=pd.DataFrame(rows)
         st.caption(f"Calculated betting sides: {len(board)} • Skipped invalid prices: {skipped_prices}")
@@ -168,7 +168,7 @@ if not board.empty:
     board["Edge (pp)"]=100*(board["Model probability"]-board["Market implied probability"])
     board["Estimated EV %"]=100*board["Estimated ROI"]
     positive=board[board["Estimated ROI"]>0].sort_values("Estimated ROI",ascending=False)
-    top=positive.drop_duplicates("Game").head(10)
+    top=positive.drop_duplicates(subset=["Game ID"],keep="first").head(10)
 else:
     positive=pd.DataFrame()
     top=pd.DataFrame()
@@ -179,7 +179,7 @@ k3.metric("Positive EV comparisons",len(positive))
 k4.metric("Top model-implied EV",f"{100*positive['Estimated ROI'].max():.1f}%" if not positive.empty else "—")
 st.caption("A positive EV is a model estimate, not guaranteed profit. Multiple sportsbooks can quote the same game.")
 st.markdown("## Top 10 opportunities")
-st.caption("Ten different matchups, ranked by the best positive model-implied expected value available. Expand each card for the underlying inputs.")
+st.caption("One pick per game, using its highest model-implied EV sportsbook quote. Expand a card to compare other books.")
 if top.empty:
     st.info("No positive model-implied opportunities are available from current moneylines.")
 else:
