@@ -30,6 +30,11 @@ def fetch_odds(predictions,key):
         for _,g in predictions.iterrows():
             pred_index.setdefault((_norm(g.home_team),_norm(g.away_team)),[]).append(g)
         event_matches=0
+        status["forecast_team_samples"]=predictions[["home_team","away_team"]].head(5).to_dict("records")
+        status["unmatched_provider_samples"]=[]
+        def team_matches(a,b):
+            x,y=_norm(a),_norm(b)
+            return bool(x and y and (x==y or (min(len(x),len(y))>=7 and (x.startswith(y) or y.startswith(x)))))
         offers_seen=0
         for event in events:
             home=event.get("home_team") or event.get("homeTeam") or ""
@@ -39,8 +44,11 @@ def fetch_odds(predictions,key):
                 home,away=teams[0],teams[1]
             matches=pred_index.get((_norm(home),_norm(away)),[])
             if len(matches)!=1:
-                matches=pred_index.get((_norm(away),_norm(home)),[])
-                if len(matches)!=1:continue
+                matches=[g for _,g in predictions.iterrows() if team_matches(home,g.home_team) and team_matches(away,g.away_team)]
+            if len(matches)!=1:
+                if len(status["unmatched_provider_samples"])<5:
+                    status["unmatched_provider_samples"].append({"home":home,"away":away,"candidate_count":len(matches)})
+                continue
             event_matches+=1
             game=matches[0]
             books=event.get("books") or event.get("bookmakers") or []
