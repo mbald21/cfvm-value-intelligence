@@ -10,7 +10,7 @@ DATA=Path(__file__).parent/"data"
 DATA.mkdir(exist_ok=True)
 st.title("🏈 Better Betting with Baldwin")
 st.subheader("College Football Value Intelligence")
-st.info("CFVM v3.3 • Model Competition Lab")
+st.info("CFVM v3.4 • Advanced efficiency research")
 st.caption("Private research prototype • independently modeled probabilities • not verified betting advice")
 st.warning("Research prototype: forecasts refresh when the app is visited after 24 hours; no background scheduler or durable cloud database. Historical profitability is unverified.")
 report_path=DATA/"model_report.json"
@@ -141,8 +141,8 @@ st.markdown("""
 </style>
 """,unsafe_allow_html=True)
 st.markdown("""<div class="hero"><div class="kicker">COLLEGE FOOTBALL VALUE INTELLIGENCE</div>
-<h2>Where our forecast disagrees with the sportsbook.</h2>
-<p>CFVM independently estimates each team's chance of winning from historical results, evolving Elo team strength, and home-field advantage. It then compares that probability against real moneyline prices from TheOddsAPI to identify potential mispricing. The model does not use sportsbook odds to generate its forecasts.</p>
+<h2>Finding the games where the numbers tell a different story.</h2>
+<p>CFVM builds independent win forecasts from historical results and pregame team-strength ratings, then compares them with real sportsbook moneylines from TheOddsAPI. Our Research Lab tests competing approaches and explores advanced efficiency measures such as EPA and success rate. Experimental inputs do not affect live forecasts until independently validated.</p>
 <p><b>01 · Forecast</b> &nbsp; Team strength + venue &nbsp;&nbsp; <b>02 · Compare</b> &nbsp; Live sportsbook prices &nbsp;&nbsp; <b>03 · Explain</b> &nbsp; Win probability, implied probability and expected value</p></div>""",unsafe_allow_html=True)
 if not board.empty:
     board=board.copy()
@@ -232,6 +232,28 @@ else:
         conn.close()
 st.divider()
 st.markdown("## Model Competition Lab")
+with st.expander("Add advanced team efficiency data (experimental)",expanded=False):
+    st.write("Upload one row per team per completed game. Required CSV columns: game_id, team, epa_per_play, success_rate.")
+    st.caption("EPA measures how much plays change scoring expectations. Success rate measures how consistently plays are productive. These inputs do not change live picks.")
+    advanced_upload=st.file_uploader("Historical team-game EPA and success rate CSV",type="csv",key="advanced_upload")
+    if advanced_upload is not None and st.button("Build leakage-safe pregame features",key="build_advanced"):
+        try:
+            advanced_df=pd.read_csv(advanced_upload,dtype={"game_id":str})
+            required={"game_id","team","epa_per_play","success_rate"}
+            if not required.issubset(advanced_df.columns):
+                st.error("Missing columns: "+", ".join(sorted(required-set(advanced_df.columns))))
+            else:
+                advanced_df.to_csv(DATA/"advanced_team_games.csv",index=False)
+                from advanced_features import build
+                result=build()
+                if result.get("status")=="ok":
+                    st.success(f"Prepared historical pregame efficiency inputs for {result['covered_games']} games. Run the model competition below.")
+                    st.caption(result["method"])
+                else:
+                    st.warning(str(result))
+        except Exception as exc:
+            st.error(f"Advanced data import failed: {exc}")
+
 st.caption("Which forecasting method has actually performed best on seasons it had never seen? This comparison tests historical predictions, not betting profits.")
 competition_path=DATA/"model_competition.json"
 if st.button("Run model competition on historical games",key="run_competition"):
@@ -262,7 +284,7 @@ if competition_path.exists():
         st.warning(f"Could not display model comparison: {exc}")
 else:
     st.info("Run the comparison to see which approach predicts unseen historical games most accurately. Current live picks remain on the existing Elo/logistic baseline until a new model is independently validated.")
-st.caption("Competition uses the existing Elo and venue data. Adding opponent-adjusted efficiency, EPA, roster and injury data requires a separate verified data pipeline.")
+st.caption("Baseline models use Elo and venue. An experimental EPA/success-rate challenger is available after uploading historical per-game data. Opponent-adjusted efficiency, injuries and rosters are not yet integrated.")
 st.markdown("## Data sources & technical details")
 with st.expander("Sportsbook connection and API diagnostics",expanded=False):
     with st.expander("Live sportsbook connection · TheOddsAPI",expanded=False):
