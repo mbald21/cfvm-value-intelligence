@@ -81,11 +81,13 @@ def train():
         pred=model.predict_proba(te[["elo_diff","home_field"]])[:,1]
         tests.append({"season":year,"games":len(te),"brier":float(brier_score_loss(te.label,pred)),"accuracy":float(accuracy_score(te.label,pred>=.5))})
     model=LogisticRegression(max_iter=1000).fit(hist[["elo_diff","home_field"]],hist.label)
-    upcoming=f[(~f.completed)&(f.season>=2026)&(pd.to_datetime(f.game_date,utc=True)>pd.Timestamp.now(tz="UTC"))].copy()
+    future_dates=pd.to_datetime(f.game_date,utc=True,errors="coerce")>pd.Timestamp.now(tz="UTC")
+    diagnostics={"source_2026_rows":int((d.season==2026).sum()),"features_2026_rows":int((f.season==2026).sum()),"uncompleted_2026_rows":int(((~f.completed)&(f.season==2026)).sum()),"future_dated_2026_rows":int((future_dates&(f.season==2026)).sum()),"future_uncompleted_2026_rows":int((future_dates&(~f.completed)&(f.season==2026)).sum()),"latest_2026_dates":f.loc[f.season==2026,"game_date"].tail(5).tolist(),"current_utc":pd.Timestamp.now(tz="UTC").isoformat()}
+    upcoming=f[(~f.completed)&(f.season>=2026)&future_dates].copy()
     if len(upcoming):upcoming["home_win_probability"]=model.predict_proba(upcoming[["elo_diff","home_field"]])[:,1]
     else:upcoming["home_win_probability"]=pd.Series(dtype=float)
     upcoming[["game_id","game_date","home_team","away_team","home_win_probability"]].to_csv(DATA/"predictions.csv",index=False)
-    report={"model":"CFVM v0.4 Elo/logistic baseline, NOT original v0.3","train_games":len(hist),"historical_evaluation":tests,"upcoming_predictions":len(upcoming),"profitability_validated":False,"forecast_source":CURRENT_SOURCE,"generated_utc":datetime.now(timezone.utc).isoformat()}
+    report={"model":"CFVM v0.4 Elo/logistic baseline, NOT original v0.3","train_games":len(hist),"historical_evaluation":tests,"upcoming_predictions":len(upcoming),"profitability_validated":False,"forecast_source":CURRENT_SOURCE,"generated_utc":datetime.now(timezone.utc).isoformat(),"schedule_diagnostics":diagnostics}
     (DATA/"model_report.json").write_text(json.dumps(report,indent=2))
     return report
 if __name__=="__main__":
