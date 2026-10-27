@@ -10,7 +10,7 @@ DATA=Path(__file__).parent/"data"
 DATA.mkdir(exist_ok=True)
 st.title("🏈 Better Betting with Baldwin")
 st.subheader("College Football Value Intelligence")
-st.info("CFVM v1.6 • Moneyline parsing and matching")
+st.info("CFVM v1.7 • Odds comparison diagnostics")
 st.caption("Private research prototype • independently modeled probabilities • not verified betting advice")
 st.warning("Research prototype: forecasts refresh when the app is visited after 24 hours; no background scheduler or durable cloud database. Historical profitability is unverified.")
 report_path=DATA/"model_report.json"
@@ -57,6 +57,7 @@ with st.sidebar:
         try:
             q=pd.read_csv(upload,dtype={"game_id":str})
             if {"game_id","book","home_american","away_american","quote_utc"}.issubset(q.columns):
+        st.caption(f"Paid/public quote rows before validation: {len(q)}")
                 q.to_csv(DATA/"quotes.csv",index=False)
                 st.success("Quotes saved on this app instance.")
             else:st.error("Required columns: game_id,book,home_american,away_american,quote_utc")
@@ -144,6 +145,7 @@ if not pred.empty and (quotes_path.exists() or not public_q.empty or not provide
         q["quote_utc"]=pd.to_datetime(q["quote_utc"],utc=True,errors="coerce")
         q=q[q["quote_utc"].notna()].copy()
         joined=pred.merge(q,on="game_id",how="inner")
+        st.caption(f"Quote rows with valid timestamps: {len(q)} • Forecast-quote comparisons: {len(joined)}")
         rows=[]
         for _,g in joined.iterrows():
             for side in ("home","away"):
@@ -156,6 +158,12 @@ if not pred.empty and (quotes_path.exists() or not public_q.empty or not provide
                     if ev>0:rows.append({"Game":f"{g.away_team} @ {g.home_team}","Pick":g.home_team if side=="home" else g.away_team,"Book":g["book"],"American odds":odds,"Model probability":round(prob,4),"Estimated ROI":round(ev,4),"Quote time (UTC)":g["quote_utc"]})
                 except (ValueError,TypeError):continue
         board=pd.DataFrame(rows)
+        if joined.empty:
+            st.error("No quote rows joined to forecasts. Check game IDs and timestamps.")
+        elif board.empty:
+            st.warning("Quotes joined, but no positive-EV opportunities passed validation. Inspect odds formats and probability values.")
+            with st.expander("Comparison diagnostics"):
+                st.dataframe(joined[["away_team","home_team","book","home_american","away_american","home_win_probability"]].head(15),hide_index=True,use_container_width=True)
         if not board.empty:board=board.sort_values("Estimated ROI",ascending=False)
 a,b,c=st.columns(3)
 a.metric("Upcoming game forecasts",len(pred))
