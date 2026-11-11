@@ -231,6 +231,34 @@ else:
             st.success("Saved locally. Notes may be lost when this cloud instance restarts.")
         conn.close()
 st.divider()
+st.markdown("## Last three weeks: reconstructed performance")
+st.caption("October 20–November 9, 2026. Reconstructs predictions using the baseline trained through 2025 and pregame Elo ratings. These are not archived live picks.")
+if st.button("Calculate three-week win results",key="three_week_backtest"):
+    from retrospective_backtest import run
+    with st.spinner("Refreshing final scores and evaluating pregame forecasts..."):
+        try:
+            result=run()
+            if result.get("status")=="ok":
+                st.success(f"Evaluated {result['games']} games; {result['correct']} correct ({result['accuracy']:.1%}).")
+            else:st.warning(str(result))
+        except Exception as exc:st.error(f"Evaluation failed: {exc}")
+retro_path=DATA/"retrospective_3weeks_report.json"
+if retro_path.exists():
+    report=json.loads(retro_path.read_text())
+    if report.get("status")=="ok":
+        r1,r2,r3=st.columns(3)
+        r1.metric("Games evaluated",report["games"])
+        r2.metric("Correct winners",f"{report['correct']} / {report['games']}")
+        r3.metric("Prediction accuracy",f"{report['accuracy']:.1%}")
+        st.caption("Probability accuracy (Brier score, lower is better): "+f"{report['brier']:.3f}")
+        st.warning("This is a reconstructed win-prediction evaluation, NOT a sportsbook ROI backtest. We did not archive the displayed odds or original ranked picks.")
+        if report.get("by_confidence"):
+            st.dataframe(pd.DataFrame(report["by_confidence"]),hide_index=True,use_container_width=True)
+        games_path=DATA/"retrospective_3weeks_games.csv"
+        if games_path.exists():
+            game_results=pd.read_csv(games_path)
+            st.dataframe(game_results[["game_date","away_team","home_team","predicted_winner","actual_winner","confidence","correct"]],hide_index=True,use_container_width=True)
+            st.download_button("Download reconstructed game results",game_results.to_csv(index=False).encode(),file_name="cfvm_oct20_nov09_2026_backtest.csv",mime="text/csv")
 st.markdown("## Model Competition Lab")
 with st.expander("Download historical EPA and success rates automatically",expanded=False):
     st.write("Download historical per-game offensive EPA and success rate from documented SportsDataverse GitHub releases, match each team to its game, and build pregame-only research inputs.")
